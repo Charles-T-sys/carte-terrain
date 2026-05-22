@@ -428,6 +428,18 @@
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .heading-marker {
+  width: 0; height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 22px solid #2196f3;
+  position: absolute;
+  top: -24px; left: 50%;
+  transform: translateX(-50%);
+  transform-origin: bottom center;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
+}
 </style>
 </head>
 <body>
@@ -473,6 +485,7 @@
     <div id="map"></div>
     <div id="toolbar">
       <button class="tool-btn active" id="btn-gps" title="Centrer sur ma position" onclick="centerOnPos()">◎</button>
+      <button class="tool-btn" id="btn-compass" title="Activer boussole" onclick="requestCompass()">🧭</button>
       <div class="tool-sep"></div>
       <button class="tool-btn" id="btn-zoom-in" title="Zoom +" onclick="zoomIn()">＋</button>
       <button class="tool-btn" id="btn-zoom-out" title="Zoom −" onclick="zoomOut()">－</button>
@@ -1116,6 +1129,48 @@ document.addEventListener('keydown', e => {
 window.addEventListener('resize', () => {
   if (state.map) state.map.invalidateSize();
 });
+
+// ══════════════════════════════════════════════════════
+//  BOUSSOLE
+// ══════════════════════════════════════════════════════
+function requestCompass() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(result => {
+        if (result === 'granted') {
+          window.addEventListener('deviceorientation', onHeading);
+          document.getElementById('btn-compass').classList.add('active');
+          toast('Boussole activée');
+        } else {
+          toast('Permission boussole refusée');
+        }
+      }).catch(() => toast('Erreur boussole'));
+  } else {
+    window.addEventListener('deviceorientation', onHeading);
+    document.getElementById('btn-compass').classList.add('active');
+    toast('Boussole activée');
+  }
+}
+
+function onHeading(e) {
+  const heading = e.webkitCompassHeading != null
+    ? e.webkitCompassHeading
+    : (360 - (e.alpha || 0));
+  state.heading = heading;
+  if (state.posMarker) {
+    const icon = state.posMarker.getElement();
+    if (icon) {
+      let arrow = icon.querySelector('.heading-marker');
+      if (!arrow) {
+        arrow = document.createElement('div');
+        arrow.className = 'heading-marker';
+        icon.querySelector('.pos-marker').appendChild(arrow);
+      }
+      icon.querySelector('.pos-marker').style.transform = `rotate(${heading}deg)`;
+    }
+  }
+}
 
 // ══════════════════════════════════════════════════════
 //  INIT
