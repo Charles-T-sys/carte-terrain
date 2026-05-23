@@ -2405,6 +2405,7 @@ async function loadCOGFromBlob(blob) {
     document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
 
     showScreen('map');
+    if (state.map) state.map.invalidateSize();
   } catch(err) {
     setLoadStatus('⚠ Erreur : ' + err.message);
     console.error(err);
@@ -2416,6 +2417,8 @@ async function loadCOGFromBlob(blob) {
 // ══════════════════════════════════════════════════════
 function initMap(arrayBuffer) {
   if (state.map) { state.map.remove(); state.map = null; }
+
+  document.getElementById('map-wrap').style.display = 'block';
 
   state.map = L.map('map', {
     center: [48.08, -68.71], zoom: 13,
