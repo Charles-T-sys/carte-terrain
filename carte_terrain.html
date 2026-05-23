@@ -1766,9 +1766,15 @@
         self._bounds = bounds;
 
         if (self._map) {
-          self._map.fitBounds(bounds);
-          self._render();
-          if (self._options.onReady) setTimeout(function() { self._options.onReady(); }, 400);
+          // setTimeout(0) garantit que _srcCanvas est accessible
+          // avant que fitBounds déclenche moveend/_scheduleRender
+          setTimeout(function() {
+            if (self._map) {
+              self._map.fitBounds(bounds);
+              self._render();
+              if (self._options.onReady) self._options.onReady();
+            }
+          }, 0);
         }
 
       } catch(err) {
