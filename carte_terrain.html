@@ -1773,13 +1773,23 @@
       var map = this._map;
       var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
       var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
-      var cw = Math.abs(br.x - tl.x), ch = Math.abs(br.y - tl.y);
-      // Utiliser les dimensions stockées au dernier render, pas style.width
+      var cw = Math.abs(br.x - tl.x);
+      var ch = Math.abs(br.y - tl.y);
       var pw = this._lastRenderPxW || cw;
       var ph = this._lastRenderPxH || ch;
+
+      // Repositionner le coin haut-gauche
       L.DomUtil.setPosition(this._canvas, tl);
       this._canvas.style.transformOrigin = '0 0';
-      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+
+      // Scaler uniquement si le zoom a changé (pas pendant le pan pur)
+      var currentZoom = map.getZoom();
+      if (this._lastRenderZoom != null && currentZoom !== this._lastRenderZoom) {
+        this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+      } else {
+        // Pan pur : juste repositionner, pas de scale
+        this._canvas.style.transform = '';
+      }
     },
 
     _scheduleRender: function() {
@@ -1829,6 +1839,7 @@
       // Mémoriser les dimensions CSS du dernier render pour _transformReposition
       this._lastRenderPxW = pxW;
       this._lastRenderPxH = pxH;
+      this._lastRenderZoom = map.getZoom();
 
       this._rendering = false;
       if (this._pendingRender) { this._pendingRender = false; this._render(); }
