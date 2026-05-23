@@ -810,32 +810,81 @@ async function renderPageOffscreen(scale) {
 }
 
 // ══════════════════════════════════════════════════════
-//  LAYER PDF ADAPTATIF — re-rasterise à chaque zoom
+//  LAYER PDF ADAPTATIF — double-buffering, zéro flash
 // ══════════════════════════════════════════════════════
 const PDFLayer = L.Layer.extend({
   initialize(pdfDoc, georef) {
-    this._pdf = pdfDoc;
-    this._georef = georef;
-    this._canvas = null;
-    this._rendering = false;
+    this._pdf     = pdfDoc;
+    this._georef  = georef;
+    // Canvas visible (toujours affiché, jamais effacé en direct)
+    this._canvas  = null;
+    // Canvas offscreen : le rendu s'y fait ; swap atomique à la fin
+    this._offscreen = null;
+    this._rendering    = false;
     this._pendingRender = false;
+    // Zoom au dernier rendu terminé — pour savoir si un re-rendu est utile
+    this._lastRenderZoom = null;
   },
 
   onAdd(map) {
     this._map = map;
+
+    // Canvas visible — reste dans le DOM, jamais vidé pendant un rendu
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
     map.getPanes().overlayPane.appendChild(this._canvas);
-    map.on('moveend zoomend', this._render, this);
-    map.on('move zoom', this._reposition, this);
+
+    // Canvas offscreen (hors DOM)
+    this._offscreen = document.createElement('canvas');
+
+    // Pendant le pan/zoom en cours : repositionner le canvas existant par CSS transform
+    // → la carte reste visible, juste un peu floue jusqu'à la fin du geste
+    map.on('move zoom', this._transformReposition, this);
+
+    // À la fin du geste : re-rasteriser à la bonne résolution
+    map.on('moveend zoomend', this._scheduleRender, this);
+
     this._render();
     return this;
   },
 
   onRemove(map) {
     map.getPanes().overlayPane.removeChild(this._canvas);
-    map.off('moveend zoomend', this._render, this);
-    map.off('move zoom', this._reposition, this);
+    map.off('move zoom',        this._transformReposition, this);
+    map.off('moveend zoomend',  this._scheduleRender, this);
+  },
+
+  // Pendant le mouvement : déplacer/scaler le canvas courant par CSS transform
+  // → zéro flash, léger flou acceptable pendant le geste
+  _transformReposition() {
+    if (!this._canvas || !this._map || !this._lastRenderZoom) return;
+    const map  = this._map;
+    const g    = this._georef;
+    const b    = g.bounds_wgs84;
+
+    // Position CSS de référence (coin haut-gauche de la carte PDF)
+    const topLeft = map.latLngToLayerPoint([b.lat_max, b.lon_min]);
+    const sw = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
+    const ne = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
+    const curW = Math.abs(ne.x - sw.x);
+    const curH = Math.abs(sw.y - ne.y);
+
+    // Taille CSS du canvas lors du dernier rendu terminé
+    const prevW = parseFloat(this._canvas.style.width)  || curW;
+    const prevH = parseFloat(this._canvas.style.height) || curH;
+
+    // Scale CSS pour compenser l'écart de zoom
+    const sx = curW / prevW;
+    const sy = curH / prevH;
+
+    L.DomUtil.setPosition(this._canvas, topLeft);
+    this._canvas.style.transformOrigin = '0 0';
+    this._canvas.style.transform = `scale(${sx},${sy})`;
+  },
+
+  _scheduleRender() {
+    if (this._rendering) { this._pendingRender = true; return; }
+    this._render();
   },
 
   async _render() {
@@ -843,37 +892,56 @@ const PDFLayer = L.Layer.extend({
     this._rendering = true;
 
     const map = this._map;
-    const g = this._georef;
-    const b = g.bounds_wgs84;
+    const g   = this._georef;
+    const b   = g.bounds_wgs84;
 
-    // Calculer combien de pixels l'overlay occupe à ce zoom
-    const sw = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
-    const ne = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
+    const sw  = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
+    const ne  = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
     const pxW = Math.abs(ne.x - sw.x);
     const pxH = Math.abs(sw.y - ne.y);
 
-    // Résolution réelle souhaitée (avec devicePixelRatio)
-    const dpr = window.devicePixelRatio || 1;
+    const dpr     = window.devicePixelRatio || 1;
     const targetW = Math.round(pxW * dpr);
     const targetH = Math.round(pxH * dpr);
 
-    // Calculer le scale PDF.js correspondant
-    const page = await this._pdf.getPage(1);
-    const vp0 = page.getViewport({ scale: 1 });
-    const scale = Math.max(targetW / vp0.width, targetH / vp0.height);
-    const clampedScale = Math.min(Math.max(scale, 0.5), 12); // limiter la mémoire
+    const page   = await this._pdf.getPage(1);
+    const vp0    = page.getViewport({ scale: 1 });
+    const scale  = Math.max(targetW / vp0.width, targetH / vp0.height);
+    const clamped = Math.min(Math.max(scale, 0.5), 12);
+    const viewport = page.getViewport({ scale: clamped });
 
-    const viewport = page.getViewport({ scale: clampedScale });
-    this._canvas.width = viewport.width;
-    this._canvas.height = viewport.height;
-    this._canvas.style.width  = Math.round(pxW) + 'px';
-    this._canvas.style.height = Math.round(pxH) + 'px';
+    // ── Rendu dans l'offscreen ──────────────────────────
+    const off = this._offscreen;
+    off.width  = viewport.width;
+    off.height = viewport.height;
+    const ctx  = off.getContext('2d');
+    ctx.clearRect(0, 0, off.width, off.height);
 
-    const ctx = this._canvas.getContext('2d');
-    ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    try {
+      await page.render({ canvasContext: ctx, viewport }).promise;
+    } catch(e) {
+      // Rendu annulé (nouveau zoom arrivé entretemps) — ignorer
+      this._rendering = false;
+      if (this._pendingRender) { this._pendingRender = false; this._render(); }
+      return;
+    }
 
-    this._reposition();
+    // ── Swap atomique : copier l'offscreen dans le canvas visible ──
+    const vis = this._canvas;
+    vis.width  = off.width;
+    vis.height = off.height;
+    vis.style.width  = Math.round(pxW) + 'px';
+    vis.style.height = Math.round(pxH) + 'px';
+    // Réinitialiser le transform CSS avant de dessiner
+    vis.style.transform = '';
+    vis.style.transformOrigin = '';
+    vis.getContext('2d').drawImage(off, 0, 0);
+
+    // Repositionner proprement
+    const topLeft = map.latLngToLayerPoint([b.lat_max, b.lon_min]);
+    L.DomUtil.setPosition(vis, topLeft);
+
+    this._lastRenderZoom = map.getZoom();
     this._rendering = false;
 
     if (this._pendingRender) {
@@ -881,17 +949,6 @@ const PDFLayer = L.Layer.extend({
       this._render();
     }
   },
-
-  _reposition() {
-    if (!this._canvas || !this._map) return;
-    const map = this._map;
-    const g = this._georef;
-    const b = g.bounds_wgs84;
-    const sw = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
-    const ne = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
-    const topLeft = map.latLngToLayerPoint([b.lat_max, b.lon_min]);
-    L.DomUtil.setPosition(this._canvas, topLeft);
-  }
 });
 
 // ══════════════════════════════════════════════════════
