@@ -1769,8 +1769,13 @@
     },
 
     _transformReposition: function() {
-      if (!this._canvas || !this._map || !this._bounds) return;
+      // Pendant le pan : Leaflet déplace l'overlayPane entier automatiquement
+      // On intervient seulement pendant le zoom pour compenser le changement d'échelle
+      if (!this._canvas || !this._map || !this._bounds || !this._lastRenderZoom) return;
       var map = this._map;
+      var currentZoom = map.getZoom();
+      if (currentZoom === this._lastRenderZoom) return; // pan pur — ne rien faire
+
       var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
       var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
       var cw = Math.abs(br.x - tl.x);
@@ -1778,18 +1783,9 @@
       var pw = this._lastRenderPxW || cw;
       var ph = this._lastRenderPxH || ch;
 
-      // Repositionner le coin haut-gauche
       L.DomUtil.setPosition(this._canvas, tl);
       this._canvas.style.transformOrigin = '0 0';
-
-      // Scaler uniquement si le zoom a changé (pas pendant le pan pur)
-      var currentZoom = map.getZoom();
-      if (this._lastRenderZoom != null && currentZoom !== this._lastRenderZoom) {
-        this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
-      } else {
-        // Pan pur : juste repositionner, pas de scale
-        this._canvas.style.transform = '';
-      }
+      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
     },
 
     _scheduleRender: function() {
