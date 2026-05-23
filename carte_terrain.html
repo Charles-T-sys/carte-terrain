@@ -8,560 +8,300 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a2a1a">
 <title>Carte Terrain — Terfa</title>
-
-<!-- PDF.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- JSZip (KMZ export) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
 <style>
-  :root {
-    --bg:       #111a11;
-    --panel:    #1c2b1c;
-    --border:   #2e4a2e;
-    --accent:   #4caf50;
-    --accent2:  #81c784;
-    --warn:     #ff8f00;
-    --danger:   #e53935;
-    --text:     #d4e8d4;
-    --muted:    #7a9e7a;
-    --wp:       #ff6d00;
-    --h:        52px;
-    --r:        6px;
-    --font:     'Courier New', monospace;
-  }
+:root {
+  --bg:     #111a11;
+  --panel:  #1c2b1c;
+  --border: #2e4a2e;
+  --accent: #4caf50;
+  --accent2:#81c784;
+  --warn:   #ff8f00;
+  --danger: #e53935;
+  --text:   #d4e8d4;
+  --muted:  #7a9e7a;
+  --wp:     #ff6d00;
+  --h:      52px;
+  --r:      6px;
+  --font:   'Courier New', monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── HEADER ── */
+header{height:var(--h);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:10px;flex-shrink:0;z-index:1000}
+.app-title{font-size:13px;font-weight:bold;color:var(--accent);letter-spacing:2px;text-transform:uppercase;flex:1}
+.gps-pill{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--bg);color:var(--muted);transition:all .3s}
+.gps-pill.active{color:var(--accent);border-color:var(--accent)}
+.gps-pill.no-fix{color:var(--warn);border-color:var(--warn)}
+.gps-dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.gps-pill.active .gps-dot{background:var(--accent);animation:pulse 1.5s infinite}
+.gps-pill.no-fix .gps-dot{background:var(--warn)}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.6}}
 
-  body {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--text);
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    user-select: none;
-    -webkit-user-select: none;
-  }
+/* ── MAIN ── */
+main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
 
-  /* ── HEADER ── */
-  header {
-    height: var(--h);
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    gap: 10px;
-    flex-shrink: 0;
-    z-index: 1000;
-  }
-  .app-title {
-    font-size: 13px;
-    font-weight: bold;
-    color: var(--accent);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    flex: 1;
-  }
-  .gps-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--muted);
-    transition: all .3s;
-  }
-  .gps-pill.active { color: var(--accent); border-color: var(--accent); }
-  .gps-pill.no-fix { color: var(--warn); border-color: var(--warn); }
-  .gps-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--muted);
-    animation: none;
-  }
-  .gps-pill.active .gps-dot {
-    background: var(--accent);
-    animation: pulse 1.5s infinite;
-  }
-  .gps-pill.no-fix .gps-dot { background: var(--warn); }
+/* ══════════════════════════════════════
+   ÉCRAN D'ACCUEIL — BIBLIOTHÈQUE
+══════════════════════════════════════ */
+#home-screen{
+  position:absolute;inset:0;z-index:2000;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+#home-screen.hidden{display:none}
 
-  @keyframes pulse {
-    0%,100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.5); opacity: .6; }
-  }
+.home-header{
+  padding:20px 16px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.home-header h2{font-size:14px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+.home-header p{font-size:11px;color:var(--muted)}
 
-  /* ── MAIN ── */
-  main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.home-actions{
+  padding:12px 16px;
+  flex-shrink:0;
+  display:flex;gap:8px;
+}
+.home-btn{
+  flex:1;padding:10px 12px;
+  border-radius:var(--r);border:1px solid var(--border);
+  background:var(--panel);color:var(--text);
+  font-family:var(--font);font-size:12px;cursor:pointer;
+  transition:all .15s;text-align:center;
+}
+.home-btn:active{transform:scale(.97)}
+.home-btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:bold}
 
-  /* ── MAP CONTAINER ── */
-  #map-wrap {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    background: #0d150d;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Canvas PDF */
-  #pdf-canvas {
-    position: absolute;
-    top: 0; left: 0;
-    transform-origin: top left;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
-  }
-
-  /* Leaflet map par-dessus */
-  #map {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: transparent !important;
-    z-index: 10;
-  }
-  .leaflet-tile-pane { display: none; }
-  .leaflet-container { background: transparent !important; }
-
-  /* Marqueur position */
-  .pos-marker {
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: #2196f3;
-    border: 3px solid white;
-    box-shadow: 0 0 0 3px rgba(33,150,243,.4), 0 2px 8px rgba(0,0,0,.5);
-  }
-  .pos-marker-ring {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%,-50%);
-    width: 48px; height: 48px;
-    border-radius: 50%;
-    border: 2px solid rgba(33,150,243,.4);
-    animation: ring-pulse 2s infinite;
-  }
-  @keyframes ring-pulse {
-    0% { transform: translate(-50%,-50%) scale(.5); opacity: 1; }
-    100% { transform: translate(-50%,-50%) scale(1.5); opacity: 0; }
-  }
-
-  /* Marqueur waypoint */
-  .wp-icon {
-    width: 28px; height: 36px;
-    position: relative;
-  }
-  .wp-pin {
-    width: 20px; height: 20px;
-    border-radius: 50% 50% 50% 0;
-    transform: rotate(-45deg);
-    background: var(--wp);
-    border: 2px solid white;
-    box-shadow: 0 2px 6px rgba(0,0,0,.5);
-    position: absolute;
-    top: 0; left: 4px;
-  }
-  .wp-label {
-    position: absolute;
-    top: -26px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg);
-    color: var(--text);
-    font-size: 10px;
-    padding: 2px 5px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    white-space: nowrap;
-    font-family: var(--font);
-    pointer-events: none;
-  }
-
-  /* ── TOOLBAR ── */
-  #toolbar {
-    position: absolute;
-    right: 10px;
-    top: 10px;
-    z-index: 500;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .tool-btn {
-    width: 40px; height: 40px;
-    border-radius: var(--r);
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--text);
-    font-size: 18px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all .15s;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.4);
-  }
-  .tool-btn:active { transform: scale(.93); background: var(--border); }
-  .tool-btn.active { border-color: var(--accent); color: var(--accent); }
-  .tool-btn.warn { border-color: var(--warn); color: var(--warn); }
-  .tool-sep { height: 6px; }
-
-  /* ── COORDS BAR ── */
-  #coords-bar {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    z-index: 500;
-    background: rgba(17,26,17,.88);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    gap: 14px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .coord-val { color: var(--text); font-weight: bold; }
-  .acc-val { color: var(--accent2); }
-  .coords-bar-label { color: var(--muted); font-size: 10px; }
-
-  /* ── LOAD SCREEN ── */
-  #load-screen {
-    position: absolute;
-    inset: 0;
-    z-index: 2000;
-    background: var(--bg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-  }
-  #load-screen h2 { font-size: 14px; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
-  #load-screen p { font-size: 12px; color: var(--muted); text-align: center; max-width: 300px; line-height: 1.6; }
-
-  .drop-zone {
-    width: 280px;
-    border: 2px dashed var(--border);
-    border-radius: var(--r);
-    padding: 28px 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all .2s;
-    background: var(--panel);
-  }
-  .drop-zone:hover, .drop-zone.drag-over {
-    border-color: var(--accent);
-    background: rgba(76,175,80,.08);
-  }
-  .drop-zone .icon { font-size: 36px; margin-bottom: 10px; }
-  .drop-zone p { font-size: 12px; color: var(--muted); }
-  .drop-zone strong { color: var(--text); }
-
-  .progress-bar {
-    width: 280px;
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    display: none;
-  }
-  .progress-fill {
-    height: 100%;
-    background: var(--accent);
-    width: 0%;
-    transition: width .2s;
-    border-radius: 2px;
-  }
-  #load-status { font-size: 11px; color: var(--muted); }
-
-  .file-row {
-    display: flex;
-    gap: 8px;
-    flex-direction: column;
-    align-items: center;
-  }
-  .file-btn {
-    padding: 8px 18px;
-    border-radius: var(--r);
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 12px;
-    cursor: pointer;
-    transition: all .15s;
-  }
-  .file-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .file-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
-
-  /* ── WAYPOINT PANEL ── */
-  #wp-panel {
-    position: absolute;
-    bottom: 36px; left: 0; right: 0;
-    z-index: 600;
-    background: var(--panel);
-    border-top: 1px solid var(--border);
-    padding: 12px;
-    transform: translateY(100%);
-    transition: transform .25s ease;
-    max-height: 50dvh;
-    overflow-y: auto;
-  }
-  #wp-panel.open { transform: translateY(0); }
-  .wp-panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-  }
-  .wp-panel-title { font-size: 12px; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; }
-  .wp-list { display: flex; flex-direction: column; gap: 6px; }
-  .wp-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: var(--r);
-    border: 1px solid var(--border);
-    background: var(--bg);
-    font-size: 11px;
-  }
-  .wp-item-icon { color: var(--wp); font-size: 16px; }
-  .wp-item-name { flex: 1; color: var(--text); }
-  .wp-item-coords { color: var(--muted); font-size: 10px; }
-  .wp-item-del {
-    background: none;
-    border: none;
-    color: var(--danger);
-    cursor: pointer;
-    font-size: 14px;
-    padding: 2px 6px;
-    border-radius: 3px;
-  }
-
-  /* ── MODAL ── */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 3000;
-    background: rgba(0,0,0,.6);
-    backdrop-filter: blur(4px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-  }
-  .modal-backdrop.open { display: flex; }
-  .modal {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    padding: 20px;
-    width: 280px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .modal h3 { font-size: 13px; color: var(--accent); letter-spacing: 1px; }
-  .modal input, .modal textarea {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    padding: 8px 10px;
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 13px;
-    width: 100%;
-  }
-  .modal textarea {
-    resize: vertical;
-    min-height: 56px;
-    max-height: 120px;
-    line-height: 1.4;
-  }
-  .modal input:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
-  .modal-coords { font-size: 10px; color: var(--muted); }
-  .modal-actions { display: flex; gap: 8px; }
-
-  /* Photo dans le modal */
-  .photo-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .photo-preview {
-    width: 64px; height: 64px;
-    border-radius: var(--r);
-    border: 1px solid var(--border);
-    object-fit: cover;
-    display: none;
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-  .photo-preview.has-photo { display: block; }
-  .photo-btn {
-    flex: 1;
-    padding: 8px 10px;
-    border-radius: var(--r);
-    border: 1px dashed var(--border);
-    background: var(--bg);
-    color: var(--muted);
-    font-family: var(--font);
-    font-size: 11px;
-    cursor: pointer;
-    text-align: center;
-    transition: all .15s;
-  }
-  .photo-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .photo-btn.has-photo { border-style: solid; border-color: var(--accent2); color: var(--accent2); }
-
-  /* Miniature dans la liste WP */
-  .wp-thumb {
-    width: 36px; height: 36px;
-    border-radius: 4px;
-    object-fit: cover;
-    border: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .wp-item-comment {
-    color: var(--muted);
-    font-size: 10px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 160px;
-  }
-
-  /* Popup Leaflet photo */
-  .wp-popup-img {
-    width: 100%;
-    max-width: 200px;
-    border-radius: 4px;
-    margin-bottom: 4px;
-    display: block;
-  }
-  .leaflet-popup-content { font-family: var(--font); font-size: 12px; min-width: 120px; }
-  .leaflet-popup-content b { color: #333; }
-  .btn { padding: 8px 16px; border-radius: var(--r); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: var(--font); font-size: 12px; cursor: pointer; flex: 1; transition: all .15s; }
-  .btn:active { transform: scale(.96); }
-  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
-
-  /* ── TOAST ── */
-  #toast {
-    position: fixed;
-    bottom: 50px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 12px;
-    padding: 8px 16px;
-    border-radius: 20px;
-    z-index: 4000;
-    opacity: 0;
-    transition: all .3s;
-    white-space: nowrap;
-    font-family: var(--font);
-  }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ── WP PLACEMENT MODE ── */
-  body.placing-wp { cursor: crosshair !important; }
-  #placing-hint {
-    position: absolute;
-    top: 10px; left: 50%;
-    transform: translateX(-50%);
-    z-index: 600;
-    background: rgba(255,109,0,.9);
-    color: white;
-    font-size: 12px;
-    padding: 6px 14px;
-    border-radius: 20px;
-    display: none;
-    font-family: var(--font);
-  }
-  body.placing-wp #placing-hint { display: block; }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .heading-marker {
-  width: 0; height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 22px solid #2196f3;
-  position: absolute;
-  top: -24px; left: 50%;
-  transform: translateX(-50%);
-  transform-origin: bottom center;
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
+.project-list{
+  flex:1;overflow-y:auto;
+  padding:8px 16px 16px;
+  display:flex;flex-direction:column;gap:8px;
+}
+.project-empty{
+  text-align:center;padding:40px 20px;
+  color:var(--muted);font-size:12px;line-height:1.8;
 }
 
-.tool-btn.recording {
-  border-color: var(--danger);
-  color: var(--danger);
-  animation: blink 1.5s infinite;
+.project-card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:12px;
+  display:flex;align-items:center;gap:10px;
+  cursor:pointer;transition:all .15s;
+  position:relative;
 }
-@keyframes blink {
-  0%,100% { opacity: 1; }
-  50% { opacity: .4; }
+.project-card:active{transform:scale(.98);border-color:var(--accent)}
+.project-card.renaming{border-color:var(--accent)}
+
+.proj-icon{font-size:28px;flex-shrink:0}
+.proj-info{flex:1;min-width:0}
+.proj-name{font-size:13px;color:var(--text);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proj-name-input{
+  background:var(--bg);border:1px solid var(--accent);
+  border-radius:3px;padding:3px 6px;
+  color:var(--text);font-family:var(--font);font-size:13px;
+  width:100%;font-weight:bold;
 }
+.proj-name-input:focus{outline:none}
+.proj-meta{font-size:10px;color:var(--muted);margin-top:2px}
+.proj-stats{font-size:10px;color:var(--accent2);margin-top:1px}
+
+.proj-actions{display:flex;gap:4px;flex-shrink:0}
+.proj-btn{
+  width:32px;height:32px;border-radius:var(--r);
+  border:1px solid var(--border);background:var(--bg);
+  color:var(--muted);font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.proj-btn:active{transform:scale(.9)}
+.proj-btn.rename:hover{color:var(--accent);border-color:var(--accent)}
+.proj-btn.del:hover{color:var(--danger);border-color:var(--danger)}
+.proj-btn.confirm{color:var(--accent);border-color:var(--accent)}
+
+/* ── LOAD SCREEN (dans un projet) ── */
+#load-screen{
+  position:absolute;inset:0;z-index:1500;
+  background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+}
+#load-screen.hidden{display:none}
+#load-screen h2{font-size:14px;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+#load-screen p{font-size:12px;color:var(--muted);text-align:center;max-width:300px;line-height:1.6}
+.drop-zone{width:280px;border:2px dashed var(--border);border-radius:var(--r);padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--panel)}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:rgba(76,175,80,.08)}
+.drop-zone .icon{font-size:36px;margin-bottom:10px}
+.drop-zone p{font-size:12px;color:var(--muted)}
+.drop-zone strong{color:var(--text)}
+.progress-bar{width:280px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;display:none}
+.progress-fill{height:100%;background:var(--accent);width:0%;transition:width .2s;border-radius:2px}
+#load-status{font-size:11px;color:var(--muted)}
+.file-row{display:flex;gap:8px;flex-direction:column;align-items:center}
+.file-btn{padding:8px 18px;border-radius:var(--r);border:1px solid var(--border);background:var(--panel);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;transition:all .15s}
+.file-btn:hover{border-color:var(--accent);color:var(--accent)}
+.file-btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:bold}
+.back-btn{
+  position:absolute;top:12px;left:12px;
+  padding:6px 12px;border-radius:var(--r);
+  border:1px solid var(--border);background:var(--panel);
+  color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;
+}
+.back-btn:hover{color:var(--text);border-color:var(--text)}
+
+/* ── MAP ── */
+#map-wrap{flex:1;position:relative;overflow:hidden;background:#0d150d}
+#pdf-canvas{position:absolute;top:0;left:0;transform-origin:top left;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges}
+#map{position:absolute;top:0;left:0;width:100%;height:100%;background:transparent !important;z-index:10}
+.leaflet-tile-pane{display:none}
+.leaflet-container{background:transparent !important}
+
+/* Marqueur position */
+.pos-marker{width:20px;height:20px;border-radius:50%;background:#2196f3;border:3px solid white;box-shadow:0 0 0 3px rgba(33,150,243,.4),0 2px 8px rgba(0,0,0,.5)}
+.pos-marker-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;border:2px solid rgba(33,150,243,.4);animation:ring-pulse 2s infinite}
+@keyframes ring-pulse{0%{transform:translate(-50%,-50%) scale(.5);opacity:1}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
+
+/* Marqueur waypoint */
+.wp-icon{width:28px;height:36px;position:relative}
+.wp-pin{width:20px;height:20px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--wp);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.5);position:absolute;top:0;left:4px}
+.wp-label{position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:var(--bg);color:var(--text);font-size:10px;padding:2px 5px;border-radius:3px;border:1px solid var(--border);white-space:nowrap;font-family:var(--font);pointer-events:none}
+
+/* ── TOOLBAR ── */
+#toolbar{position:absolute;right:10px;top:10px;z-index:500;display:flex;flex-direction:column;gap:6px}
+.tool-btn{width:40px;height:40px;border-radius:var(--r);border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.tool-btn:active{transform:scale(.93);background:var(--border)}
+.tool-btn.active{border-color:var(--accent);color:var(--accent)}
+.tool-btn.warn{border-color:var(--warn);color:var(--warn)}
+.tool-sep{height:6px}
+.tool-btn.recording{border-color:var(--danger);color:var(--danger);animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── COORDS BAR ── */
+#coords-bar{position:absolute;bottom:0;left:0;right:0;z-index:500;background:rgba(17,26,17,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;align-items:center;padding:6px 12px;gap:14px;font-size:11px;color:var(--muted)}
+.coord-val{color:var(--text);font-weight:bold}
+.acc-val{color:var(--accent2)}
+.coords-bar-label{color:var(--muted);font-size:10px}
+
+/* ── WAYPOINT PANEL ── */
+#wp-panel{position:absolute;bottom:36px;left:0;right:0;z-index:600;background:var(--panel);border-top:1px solid var(--border);padding:12px;transform:translateY(100%);transition:transform .25s ease;max-height:50dvh;overflow-y:auto}
+#wp-panel.open{transform:translateY(0)}
+.wp-panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.wp-panel-title{font-size:12px;color:var(--accent);letter-spacing:1px;text-transform:uppercase}
+.wp-list{display:flex;flex-direction:column;gap:6px}
+.wp-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);font-size:11px}
+.wp-item-icon{color:var(--wp);font-size:16px}
+.wp-item-name{flex:1;color:var(--text)}
+.wp-item-coords{color:var(--muted);font-size:10px}
+.wp-item-comment{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.wp-item-del{background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px}
+.wp-thumb{width:36px;height:36px;border-radius:4px;object-fit:cover;border:1px solid var(--border);flex-shrink:0}
+
+/* ── MODAL ── */
+.modal-backdrop{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center}
+.modal-backdrop.open{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:20px;width:300px;display:flex;flex-direction:column;gap:12px}
+.modal h3{font-size:13px;color:var(--accent);letter-spacing:1px}
+.modal input,.modal textarea{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;color:var(--text);font-family:var(--font);font-size:13px;width:100%}
+.modal textarea{resize:vertical;min-height:56px;max-height:120px;line-height:1.4}
+.modal input:focus,.modal textarea:focus{outline:none;border-color:var(--accent)}
+.modal-coords{font-size:10px;color:var(--muted)}
+.modal-actions{display:flex;gap:8px}
+.photo-row{display:flex;gap:8px;align-items:center}
+.photo-preview{width:64px;height:64px;border-radius:var(--r);border:1px solid var(--border);object-fit:cover;display:none;flex-shrink:0;cursor:pointer}
+.photo-preview.has-photo{display:block}
+.photo-btn{flex:1;padding:8px 10px;border-radius:var(--r);border:1px dashed var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;text-align:center;transition:all .15s}
+.photo-btn:hover{border-color:var(--accent);color:var(--accent)}
+.photo-btn.has-photo{border-style:solid;border-color:var(--accent2);color:var(--accent2)}
+.wp-popup-img{width:100%;max-width:200px;border-radius:4px;margin-bottom:4px;display:block}
+.leaflet-popup-content{font-family:var(--font);font-size:12px;min-width:120px}
+.leaflet-popup-content b{color:#333}
+.btn{padding:8px 16px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;flex:1;transition:all .15s}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:bold}
+
+/* ── CONFIRM DIALOG ── */
+.confirm-modal{background:var(--panel);border:1px solid var(--danger);border-radius:var(--r);padding:20px;width:280px;display:flex;flex-direction:column;gap:14px}
+.confirm-modal h3{font-size:13px;color:var(--danger)}
+.confirm-modal p{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:12px;padding:8px 16px;border-radius:20px;z-index:4000;opacity:0;transition:all .3s;white-space:nowrap;font-family:var(--font)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── WP PLACEMENT MODE ── */
+body.placing-wp{cursor:crosshair !important}
+#placing-hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:600;background:rgba(255,109,0,.9);color:white;font-size:12px;padding:6px 14px;border-radius:20px;display:none;font-family:var(--font)}
+body.placing-wp #placing-hint{display:block}
+
+/* Boussole */
+.heading-marker{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:22px solid #2196f3;position:absolute;top:-24px;left:50%;transform:translateX(-50%);transform-origin:bottom center;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
 <header>
-  <span class="app-title">🗺 Carte Terrain</span>
+  <span class="app-title" id="header-title">🗺 Carte Terrain</span>
   <div class="gps-pill" id="gps-pill">
     <div class="gps-dot"></div>
     <span id="gps-status">GPS…</span>
   </div>
 </header>
 
-<!-- MAIN -->
 <main>
-  <!-- LOAD SCREEN -->
-  <div id="load-screen">
-    <h2>Carte Terrain</h2>
-    <p>Charger un GeoPDF exporté depuis QGIS.<br>Le fichier <strong>.json</strong> sidecar est optionnel — les métadonnées sont lues directement dans le PDF.</p>
 
+  <!-- ══ ÉCRAN D'ACCUEIL ══ -->
+  <div id="home-screen">
+    <div class="home-header">
+      <h2>🗺 Carte Terrain — Terfa</h2>
+      <p>Bibliothèque de projets cartographiques</p>
+    </div>
+    <div class="home-actions">
+      <button class="home-btn primary" onclick="newProject()">＋ Nouveau projet</button>
+    </div>
+    <div class="project-list" id="project-list">
+      <div class="project-empty">Aucun projet.<br>Créez-en un avec un GeoPDF exporté depuis QGIS.</div>
+    </div>
+    <input type="file" id="new-project-pdf" accept=".pdf" style="display:none">
+  </div>
+
+  <!-- ══ ÉCRAN CHARGEMENT PDF (dans un projet existant) ══ -->
+  <div id="load-screen" class="hidden">
+    <button class="back-btn" onclick="goHome()">← Projets</button>
+    <h2 id="load-project-name">Projet</h2>
+    <p>Charger le GeoPDF pour ce projet.<br>Le fichier <strong>.json</strong> sidecar est optionnel.</p>
     <div class="drop-zone" id="drop-zone">
       <div class="icon">📄</div>
       <p><strong>Glisser le PDF ici</strong><br>ou cliquer pour parcourir</p>
     </div>
-
     <div class="file-row">
       <button class="file-btn primary" onclick="document.getElementById('file-pdf').click()">Choisir un PDF géoréférencé</button>
       <button class="file-btn" onclick="document.getElementById('file-json').click()">JSON sidecar (optionnel)</button>
     </div>
-
-    <div class="progress-bar" id="progress-bar">
-      <div class="progress-fill" id="progress-fill"></div>
-    </div>
+    <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
     <span id="load-status"></span>
-
     <input type="file" id="file-pdf" accept=".pdf" style="display:none">
     <input type="file" id="file-json" accept=".json" style="display:none">
   </div>
 
-  <!-- MAP WRAPPER -->
-  <div id="map-wrap">
+  <!-- ══ CARTE ══ -->
+  <div id="map-wrap" style="display:none;flex:1;position:relative;overflow:hidden;background:#0d150d">
     <canvas id="pdf-canvas"></canvas>
     <div id="map"></div>
     <div id="toolbar">
+      <button class="tool-btn" id="btn-home" title="Retour aux projets" onclick="goHome()">⌂</button>
+      <div class="tool-sep"></div>
       <button class="tool-btn active" id="btn-gps" title="Centrer sur ma position" onclick="centerOnPos()">◎</button>
       <button class="tool-btn" id="btn-compass" title="Activer boussole" onclick="requestCompass()">🧭</button>
       <button class="tool-btn" id="btn-trace" title="Tracé on/off" onclick="toggleTrace()">⏺</button>
@@ -573,7 +313,7 @@
       <button class="tool-btn" id="btn-wp-list" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
       <div class="tool-sep"></div>
       <button class="tool-btn" id="btn-export-geojson" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
-      <button class="tool-btn" id="btn-export-kmz" title="Exporter KMZ (avec photos)" onclick="exportKMZ()">🗂</button>
+      <button class="tool-btn" id="btn-export-kmz" title="Exporter KMZ" onclick="exportKMZ()">🗂</button>
     </div>
     <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
     <div id="coords-bar">
@@ -584,7 +324,7 @@
     </div>
   </div>
 
-  <!-- WAYPOINT PANEL -->
+  <!-- Panneau waypoints -->
   <div id="wp-panel">
     <div class="wp-panel-header">
       <span class="wp-panel-title">Waypoints</span>
@@ -592,9 +332,10 @@
     </div>
     <div class="wp-list" id="wp-list"></div>
   </div>
+
 </main>
 
-<!-- WAYPOINT MODAL -->
+<!-- Modal waypoint -->
 <div class="modal-backdrop" id="wp-modal">
   <div class="modal">
     <h3>📍 Nouveau waypoint</h3>
@@ -613,20 +354,133 @@
   </div>
 </div>
 
-<!-- TOAST -->
+<!-- Modal confirmation suppression -->
+<div class="modal-backdrop" id="confirm-modal">
+  <div class="confirm-modal">
+    <h3>🗑 Supprimer le projet ?</h3>
+    <p id="confirm-msg"></p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeConfirm()">Annuler</button>
+      <button class="btn" style="border-color:var(--danger);color:var(--danger)" id="confirm-ok-btn">Supprimer</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
 // ══════════════════════════════════════════════════════
+//  INDEXEDDB
+// ══════════════════════════════════════════════════════
+const DB_NAME    = 'carte_terrain_db';
+const DB_VERSION = 1;
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      // projects: métadonnées
+      if (!d.objectStoreNames.contains('projects')) {
+        const ps = d.createObjectStore('projects', { keyPath: 'id' });
+        ps.createIndex('lastOpened', 'lastOpened');
+      }
+      // maps: blob PDF + georef, un par projet
+      if (!d.objectStoreNames.contains('maps')) {
+        d.createObjectStore('maps', { keyPath: 'projectId' });
+      }
+      // waypoints: tous projets confondus
+      if (!d.objectStoreNames.contains('waypoints')) {
+        const ws = d.createObjectStore('waypoints', { keyPath: 'id' });
+        ws.createIndex('projectId', 'projectId');
+      }
+      // traces
+      if (!d.objectStoreNames.contains('traces')) {
+        const ts = d.createObjectStore('traces', { keyPath: 'id' });
+        ts.createIndex('projectId', 'projectId');
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function dbGet(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function dbPut(store, value) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(value);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function dbDelete(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).delete(key);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function dbGetByIndex(store, indexName, value) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).index(indexName).getAll(value);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function dbDeleteByIndex(store, indexName, value) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const objStore = tx.objectStore(store);
+    const req = objStore.index(indexName).getAllKeys(value);
+    req.onsuccess = () => {
+      const keys = req.result;
+      let count = keys.length;
+      if (count === 0) { res(); return; }
+      keys.forEach(k => {
+        const r = objStore.delete(k);
+        r.onsuccess = () => { if (--count === 0) res(); };
+        r.onerror   = () => rej(r.error);
+      });
+    };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+// ══════════════════════════════════════════════════════
 //  ÉTAT GLOBAL
 // ══════════════════════════════════════════════════════
 const state = {
+  currentProjectId: null,
   pdf: null,
-  georef: null,       // métadonnées géo
+  georef: null,
   map: null,
   pdfLayer: null,
   posMarker: null,
-  posRing: null,
+  posCircle: null,
   currentPos: null,
   accuracy: null,
   waypoints: [],
@@ -635,12 +489,11 @@ const state = {
   gpsWatchId: null,
   placingWp: false,
   pendingWpLatLng: null,
-  pendingWpPhoto: null,   // base64 data URL ou null
-  pdfScale: 1,
-  pdfOffset: { x: 0, y: 0 },
+  pendingWpPhoto: null,
   tracing: false,
   tracePts: [],
   traceLine: null,
+  heading: null,
 };
 
 // ══════════════════════════════════════════════════════
@@ -655,106 +508,280 @@ function toast(msg, ms = 2200) {
 
 function fmt(n, d = 6) { return n.toFixed(d); }
 
-// Interpolation bilinéaire lat/lon à partir des 4 coins + LPTS
-// LPTS: [TL=(0,1), BL=(0,0), BR=(1,0), TR=(1,1)] → u=x-norm, v=y-norm (0=bas, 1=haut)
-function pixelToLatLon(px, py, canvasW, canvasH) {
-  const g = state.georef;
-  if (!g) return null;
-
-  // Coordonnées normalisées (LPTS: u=col/W, v=row/H depuis le bas)
-  const u = px / canvasW;
-  const v = 1 - (py / canvasH);   // PDF y=0 en haut → v=0 en bas
-
-  // Coins: TL=(u=0,v=1), BL=(u=0,v=0), BR=(u=1,v=0), TR=(u=1,v=1)
-  const corners = g.corners;
-  const TL = corners.top_left;
-  const BL = corners.bottom_left;
-  const BR = corners.bottom_right;
-  const TR = corners.top_right;
-
-  // Bilinéaire: (1-u)(1-v)*BL + u(1-v)*BR + (1-u)v*TL + u*v*TR
-  const lat = (1-u)*(1-v)*BL.lat + u*(1-v)*BR.lat + (1-u)*v*TL.lat + u*v*TR.lat;
-  const lon = (1-u)*(1-v)*BL.lon + u*(1-v)*BR.lon + (1-u)*v*TL.lon + u*v*TR.lon;
-  return { lat, lon };
+function showScreen(name) {
+  // name: 'home' | 'load' | 'map'
+  document.getElementById('home-screen').classList.toggle('hidden', name !== 'home');
+  document.getElementById('load-screen').classList.toggle('hidden', name !== 'load');
+  const mw = document.getElementById('map-wrap');
+  mw.style.display = name === 'map' ? 'block' : 'none';
+  const wpPanel = document.getElementById('wp-panel');
+  wpPanel.style.display = name === 'map' ? '' : 'none';
 }
 
-function latLonToPixel(lat, lon, canvasW, canvasH) {
-  const g = state.georef;
-  if (!g) return null;
-  const b = g.bounds_wgs84;
-  const u = (lon - b.lon_min) / (b.lon_max - b.lon_min);
-  const v = (lat - b.lat_min) / (b.lat_max - b.lat_min);
-  return {
-    x: u * canvasW,
-    y: (1 - v) * canvasH
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('fr-CA', { year:'numeric', month:'short', day:'numeric' });
+}
+
+// ══════════════════════════════════════════════════════
+//  ÉCRAN D'ACCUEIL — BIBLIOTHÈQUE
+// ══════════════════════════════════════════════════════
+async function renderProjectList() {
+  const projects = await dbGetAll('projects');
+  projects.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0));
+
+  const list = document.getElementById('project-list');
+  if (projects.length === 0) {
+    list.innerHTML = '<div class="project-empty">Aucun projet.<br>Créez-en un avec un GeoPDF exporté depuis QGIS.</div>';
+    return;
+  }
+
+  list.innerHTML = projects.map(p => `
+    <div class="project-card" id="proj-card-${p.id}" onclick="openProject('${p.id}')">
+      <div class="proj-icon">🗺</div>
+      <div class="proj-info">
+        <div class="proj-name" id="proj-name-${p.id}">${p.name}</div>
+        <div class="proj-meta">Créé le ${fmtDate(p.created)} · Ouvert ${fmtDate(p.lastOpened)}</div>
+        <div class="proj-stats">${p.wpCount || 0} WP · ${p.traceCount || 0} tracé(s)</div>
+      </div>
+      <div class="proj-actions" onclick="event.stopPropagation()">
+        <button class="proj-btn rename" title="Renommer" onclick="startRename('${p.id}')">✎</button>
+        <button class="proj-btn del" title="Supprimer" onclick="confirmDelete('${p.id}', '${p.name.replace(/'/g,"\\'")}')">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function newProject() {
+  document.getElementById('new-project-pdf').click();
+}
+
+document.getElementById('new-project-pdf').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+
+  // Créer le projet avec nom = nom du fichier sans extension
+  const projectName = f.name.replace(/\.pdf$/i, '').replace(/_/g, ' ');
+  const projectId = 'p_' + Date.now();
+  const now = new Date().toISOString();
+
+  const project = {
+    id: projectId,
+    name: projectName,
+    created: now,
+    lastOpened: now,
+    wpCount: 0,
+    traceCount: 0,
+  };
+  await dbPut('projects', project);
+
+  // Charger le PDF directement dans ce nouveau projet
+  state.currentProjectId = projectId;
+  await loadPDF(f);
+  await renderProjectList(); // maj en fond
+});
+
+async function openProject(projectId) {
+  state.currentProjectId = projectId;
+
+  // Mettre à jour lastOpened
+  const project = await dbGet('projects', projectId);
+  if (!project) return;
+  project.lastOpened = new Date().toISOString();
+  await dbPut('projects', project);
+
+  // Charger les waypoints en mémoire
+  const wps = await dbGetByIndex('waypoints', 'projectId', projectId);
+  state.waypoints = wps;
+  state.wpCounter = wps.length + 1;
+
+  // Le PDF est-il déjà en base ?
+  const mapData = await dbGet('maps', projectId);
+
+  if (mapData && mapData.pdfBlob) {
+    // PDF connu — afficher load-screen pour le recharger depuis le cache blob
+    document.getElementById('load-project-name').textContent = project.name;
+    document.getElementById('header-title').textContent = `🗺 ${project.name}`;
+    showScreen('load');
+    // Charger automatiquement depuis le blob stocké
+    setLoadStatus('Chargement de la carte…');
+    showProgress(10);
+    await loadPDFFromBlob(mapData.pdfBlob, mapData.georef);
+  } else {
+    // Pas encore de PDF → demander
+    document.getElementById('load-project-name').textContent = project.name;
+    document.getElementById('header-title').textContent = `🗺 ${project.name}`;
+    showScreen('load');
+  }
+}
+
+// ── Renommage inline ──
+function startRename(projectId) {
+  const nameEl = document.getElementById(`proj-name-${projectId}`);
+  const card    = document.getElementById(`proj-card-${projectId}`);
+  if (!nameEl || !card) return;
+
+  const currentName = nameEl.textContent;
+  card.classList.add('renaming');
+  // Remplacer le div nom par un input
+  nameEl.outerHTML = `<input class="proj-name-input" id="proj-name-input-${projectId}"
+    value="${currentName.replace(/"/g,'&quot;')}"
+    maxlength="60"
+    onclick="event.stopPropagation()"
+    onkeydown="handleRenameKey(event,'${projectId}')"
+    onblur="commitRename('${projectId}')">`;
+
+  const input = document.getElementById(`proj-name-input-${projectId}`);
+  input.focus();
+  input.select();
+}
+
+async function commitRename(projectId) {
+  const input = document.getElementById(`proj-name-input-${projectId}`);
+  if (!input) return;
+  const newName = input.value.trim() || 'Projet sans nom';
+  const card = document.getElementById(`proj-card-${projectId}`);
+  if (card) card.classList.remove('renaming');
+
+  // Remplacer l'input par le div
+  input.outerHTML = `<div class="proj-name" id="proj-name-${projectId}">${newName}</div>`;
+
+  const project = await dbGet('projects', projectId);
+  if (project) {
+    project.name = newName;
+    await dbPut('projects', project);
+  }
+}
+
+function handleRenameKey(e, projectId) {
+  e.stopPropagation();
+  if (e.key === 'Enter')  { e.target.blur(); }
+  if (e.key === 'Escape') {
+    const project = dbGet('projects', projectId).then(p => {
+      if (!p) return;
+      const input = document.getElementById(`proj-name-input-${projectId}`);
+      if (input) {
+        input.outerHTML = `<div class="proj-name" id="proj-name-${projectId}">${p.name}</div>`;
+        const card = document.getElementById(`proj-card-${projectId}`);
+        if (card) card.classList.remove('renaming');
+      }
+    });
+  }
+}
+
+// ── Suppression ──
+let _pendingDeleteId = null;
+
+function confirmDelete(projectId, projectName) {
+  _pendingDeleteId = projectId;
+  document.getElementById('confirm-msg').textContent =
+    `"${projectName}" et toutes ses données (waypoints, tracés, photos) seront supprimés définitivement.`;
+  document.getElementById('confirm-modal').classList.add('open');
+  document.getElementById('confirm-ok-btn').onclick = async () => {
+    await deleteProject(_pendingDeleteId);
+    closeConfirm();
   };
 }
 
+function closeConfirm() {
+  document.getElementById('confirm-modal').classList.remove('open');
+  _pendingDeleteId = null;
+}
+
+async function deleteProject(projectId) {
+  await dbDelete('projects', projectId);
+  await dbDelete('maps', projectId);
+  await dbDeleteByIndex('waypoints', 'projectId', projectId);
+  await dbDeleteByIndex('traces', 'projectId', projectId);
+  toast('Projet supprimé');
+  await renderProjectList();
+}
+
+// ── Retour accueil ──
+async function goHome() {
+  // Sauvegarder l'état actuel si on est dans une carte
+  if (state.currentProjectId) {
+    await syncProjectMeta();
+  }
+
+  // Nettoyer la carte Leaflet
+  if (state.map) {
+    state.map.remove();
+    state.map = null;
+    state.pdfLayer = null;
+    state.posMarker = null;
+    state.posCircle = null;
+    state.wpMarkers = [];
+  }
+
+  // Arrêter le tracé en cours
+  if (state.tracing) {
+    state.tracing = false;
+    document.getElementById('btn-trace').classList.remove('recording');
+  }
+
+  state.currentProjectId = null;
+  state.waypoints = [];
+  state.pdf = null;
+  state.georef = null;
+
+  document.getElementById('header-title').textContent = '🗺 Carte Terrain';
+  document.getElementById('wp-panel').classList.remove('open');
+  showScreen('home');
+  await renderProjectList();
+}
+
+async function syncProjectMeta() {
+  if (!state.currentProjectId) return;
+  const project = await dbGet('projects', state.currentProjectId);
+  if (!project) return;
+  project.wpCount    = state.waypoints.length;
+  project.traceCount = (project.traceCount || 0); // tracés déjà comptés à l'export
+  project.lastOpened = new Date().toISOString();
+  await dbPut('projects', project);
+}
+
 // ══════════════════════════════════════════════════════
-//  EXTRACTION GÉOREF DEPUIS PDF (sans gdal)
+//  GÉORÉFÉRENCEMENT PDF
 // ══════════════════════════════════════════════════════
 async function extractGeorefFromPDF(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
-  // Décoder en latin-1
   let text = '';
-  for (let i = 0; i < bytes.length; i++) {
-    text += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
 
-  // GPTS
   const gptsMatch = text.match(/\/GPTS\s*\[\s*([\d\s.\-+eE]+)\]/);
   if (!gptsMatch) throw new Error('Métadonnées /GPTS introuvables — ce PDF n\'est pas un GeoPDF OGC valide.');
 
   const gptsVals = gptsMatch[1].trim().split(/\s+/).map(Number);
   const gpts = [];
-  for (let i = 0; i < gptsVals.length; i += 2) {
-    gpts.push({ lat: gptsVals[i], lon: gptsVals[i+1] });
-  }
+  for (let i = 0; i < gptsVals.length; i += 2) gpts.push({ lat: gptsVals[i], lon: gptsVals[i+1] });
 
-  // LPTS
   const lptsMatch = text.match(/\/LPTS\s*\[\s*([\d\s.\-+eE]+)\]/);
   const lpts = [];
   if (lptsMatch) {
     const lptsVals = lptsMatch[1].trim().split(/\s+/).map(Number);
-    for (let i = 0; i < lptsVals.length; i += 2) {
-      lpts.push([lptsVals[i], lptsVals[i+1]]);
-    }
+    for (let i = 0; i < lptsVals.length; i += 2) lpts.push([lptsVals[i], lptsVals[i+1]]);
   }
 
-  // MediaBox
   const mbMatch = text.match(/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/);
   const pdfW = mbMatch ? parseFloat(mbMatch[3]) : 1000;
   const pdfH = mbMatch ? parseFloat(mbMatch[4]) : 1400;
-
-  // EPSG
   const epsgMatch = text.match(/\/EPSG\s+(\d+)/);
   const epsg = epsgMatch ? parseInt(epsgMatch[1]) : null;
 
-  // Mapper corners depuis LPTS
-  const lptsLabels = { '0,1': 'top_left', '0,0': 'bottom_left', '1,0': 'bottom_right', '1,1': 'top_right' };
+  const lptsLabels = { '0,1':'top_left','0,0':'bottom_left','1,0':'bottom_right','1,1':'top_right' };
   const corners = {};
-  lpts.forEach((lp, i) => {
-    const key = `${lp[0]},${lp[1]}`;
-    corners[lptsLabels[key] || key] = gpts[i];
-  });
+  lpts.forEach((lp, i) => { corners[lptsLabels[`${lp[0]},${lp[1]}`] || `${lp[0]},${lp[1]}`] = gpts[i]; });
 
   const lats = gpts.map(p => p.lat);
   const lons = gpts.map(p => p.lon);
-
   return {
-    name: 'Carte chargée',
-    projection_epsg: epsg,
-    pdf_width_pts: pdfW,
-    pdf_height_pts: pdfH,
+    projection_epsg: epsg, pdf_width_pts: pdfW, pdf_height_pts: pdfH,
     gpts, lpts, corners,
-    bounds_wgs84: {
-      lat_min: Math.min(...lats), lat_max: Math.max(...lats),
-      lon_min: Math.min(...lons), lon_max: Math.max(...lons)
-    },
-    center_wgs84: {
-      lat: (Math.min(...lats) + Math.max(...lats)) / 2,
-      lon: (Math.min(...lons) + Math.max(...lons)) / 2
-    }
+    bounds_wgs84: { lat_min:Math.min(...lats), lat_max:Math.max(...lats), lon_min:Math.min(...lons), lon_max:Math.max(...lons) },
+    center_wgs84: { lat:(Math.min(...lats)+Math.max(...lats))/2, lon:(Math.min(...lons)+Math.max(...lons))/2 }
   };
 }
 
@@ -762,51 +789,56 @@ async function extractGeorefFromPDF(arrayBuffer) {
 //  CHARGEMENT PDF
 // ══════════════════════════════════════════════════════
 async function loadPDF(file) {
+  document.getElementById('load-project-name').textContent =
+    (await dbGet('projects', state.currentProjectId))?.name || 'Projet';
+  document.getElementById('header-title').textContent = `🗺 ${(await dbGet('projects', state.currentProjectId))?.name || ''}`;
+  showScreen('load');
   setLoadStatus('Lecture du PDF…');
   showProgress(10);
 
   const arrayBuffer = await file.arrayBuffer();
 
-  // Extraire géoref
   setLoadStatus('Extraction des métadonnées géo…');
-  showProgress(20);
+  showProgress(25);
+  let georef = null;
   try {
-    state.georef = await extractGeorefFromPDF(arrayBuffer);
-    setLoadStatus(`Géoréf OK — EPSG:${state.georef.projection_epsg}`);
+    georef = await extractGeorefFromPDF(arrayBuffer);
+    setLoadStatus(`Géoréf OK — EPSG:${georef.projection_epsg}`);
   } catch(e) {
-    setLoadStatus('⚠ ' + e.message + ' — carte affichée sans géoréférencement.');
-    state.georef = null;
+    setLoadStatus('⚠ ' + e.message);
   }
-  showProgress(40);
+  showProgress(50);
 
-  // Charger avec PDF.js
+  // Stocker le blob PDF + georef en IndexedDB
+  const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+  await dbPut('maps', { projectId: state.currentProjectId, pdfBlob: blob, georef });
+  showProgress(70);
+
+  await loadPDFFromBlob(blob, georef);
+}
+
+async function loadPDFFromBlob(blob, georef) {
+  setLoadStatus('Rendu de la carte…');
+  showProgress(80);
+
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  setLoadStatus('Rendu du PDF…');
+  const arrayBuffer = await blob.arrayBuffer();
   const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  state.pdf = pdfDoc;
-  showProgress(70);
+  state.pdf    = pdfDoc;
+  state.georef = georef;
 
   showProgress(100);
-
-  document.getElementById('load-screen').style.display = 'none';
+  showScreen('map');
   initMap();
   startGPS();
-  toast('Carte chargée ✓');
-}
 
-// renderPage: utilisé uniquement pour la résolution initiale
-// Le rendu adaptatif est géré par PDFLayer ci-dessous
-async function renderPageOffscreen(scale) {
-  const page = await state.pdf.getPage(1);
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return canvas;
+  // Recharger les marqueurs WP sur la carte
+  state.waypoints.forEach(wp => addWpMarker(wp));
+  document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
+
+  toast('Carte chargée ✓');
 }
 
 // ══════════════════════════════════════════════════════
@@ -814,140 +846,79 @@ async function renderPageOffscreen(scale) {
 // ══════════════════════════════════════════════════════
 const PDFLayer = L.Layer.extend({
   initialize(pdfDoc, georef) {
-    this._pdf     = pdfDoc;
-    this._georef  = georef;
-    // Canvas visible (toujours affiché, jamais effacé en direct)
-    this._canvas  = null;
-    // Canvas offscreen : le rendu s'y fait ; swap atomique à la fin
-    this._offscreen = null;
-    this._rendering    = false;
-    this._pendingRender = false;
-    // Zoom au dernier rendu terminé — pour savoir si un re-rendu est utile
+    this._pdf = pdfDoc; this._georef = georef;
+    this._canvas = null; this._offscreen = null;
+    this._rendering = false; this._pendingRender = false;
     this._lastRenderZoom = null;
   },
-
   onAdd(map) {
     this._map = map;
-
-    // Canvas visible — reste dans le DOM, jamais vidé pendant un rendu
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
     map.getPanes().overlayPane.appendChild(this._canvas);
-
-    // Canvas offscreen (hors DOM)
     this._offscreen = document.createElement('canvas');
-
-    // Pendant le pan/zoom en cours : repositionner le canvas existant par CSS transform
-    // → la carte reste visible, juste un peu floue jusqu'à la fin du geste
     map.on('move zoom', this._transformReposition, this);
-
-    // À la fin du geste : re-rasteriser à la bonne résolution
     map.on('moveend zoomend', this._scheduleRender, this);
-
     this._render();
     return this;
   },
-
   onRemove(map) {
     map.getPanes().overlayPane.removeChild(this._canvas);
-    map.off('move zoom',        this._transformReposition, this);
-    map.off('moveend zoomend',  this._scheduleRender, this);
+    map.off('move zoom', this._transformReposition, this);
+    map.off('moveend zoomend', this._scheduleRender, this);
   },
-
-  // Pendant le mouvement : déplacer/scaler le canvas courant par CSS transform
-  // → zéro flash, léger flou acceptable pendant le geste
   _transformReposition() {
     if (!this._canvas || !this._map || !this._lastRenderZoom) return;
-    const map  = this._map;
-    const g    = this._georef;
-    const b    = g.bounds_wgs84;
-
-    // Position CSS de référence (coin haut-gauche de la carte PDF)
+    const map = this._map, g = this._georef, b = g.bounds_wgs84;
     const topLeft = map.latLngToLayerPoint([b.lat_max, b.lon_min]);
     const sw = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
     const ne = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
-    const curW = Math.abs(ne.x - sw.x);
-    const curH = Math.abs(sw.y - ne.y);
-
-    // Taille CSS du canvas lors du dernier rendu terminé
-    const prevW = parseFloat(this._canvas.style.width)  || curW;
+    const curW = Math.abs(ne.x - sw.x), curH = Math.abs(sw.y - ne.y);
+    const prevW = parseFloat(this._canvas.style.width) || curW;
     const prevH = parseFloat(this._canvas.style.height) || curH;
-
-    // Scale CSS pour compenser l'écart de zoom
-    const sx = curW / prevW;
-    const sy = curH / prevH;
-
     L.DomUtil.setPosition(this._canvas, topLeft);
     this._canvas.style.transformOrigin = '0 0';
-    this._canvas.style.transform = `scale(${sx},${sy})`;
+    this._canvas.style.transform = `scale(${curW/prevW},${curH/prevH})`;
   },
-
   _scheduleRender() {
     if (this._rendering) { this._pendingRender = true; return; }
     this._render();
   },
-
   async _render() {
     if (this._rendering) { this._pendingRender = true; return; }
     this._rendering = true;
-
-    const map = this._map;
-    const g   = this._georef;
-    const b   = g.bounds_wgs84;
-
-    const sw  = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
-    const ne  = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
-    const pxW = Math.abs(ne.x - sw.x);
-    const pxH = Math.abs(sw.y - ne.y);
-
-    const dpr     = window.devicePixelRatio || 1;
-    const targetW = Math.round(pxW * dpr);
-    const targetH = Math.round(pxH * dpr);
-
-    const page   = await this._pdf.getPage(1);
-    const vp0    = page.getViewport({ scale: 1 });
-    const scale  = Math.max(targetW / vp0.width, targetH / vp0.height);
+    const map = this._map, g = this._georef, b = g.bounds_wgs84;
+    const sw = map.latLngToLayerPoint([b.lat_min, b.lon_min]);
+    const ne = map.latLngToLayerPoint([b.lat_max, b.lon_max]);
+    const pxW = Math.abs(ne.x - sw.x), pxH = Math.abs(sw.y - ne.y);
+    const dpr = window.devicePixelRatio || 1;
+    const page = await this._pdf.getPage(1);
+    const vp0  = page.getViewport({ scale: 1 });
+    const scale = Math.max(Math.round(pxW*dpr)/vp0.width, Math.round(pxH*dpr)/vp0.height);
     const clamped = Math.min(Math.max(scale, 0.5), 12);
     const viewport = page.getViewport({ scale: clamped });
-
-    // ── Rendu dans l'offscreen ──────────────────────────
     const off = this._offscreen;
-    off.width  = viewport.width;
-    off.height = viewport.height;
-    const ctx  = off.getContext('2d');
+    off.width = viewport.width; off.height = viewport.height;
+    const ctx = off.getContext('2d');
     ctx.clearRect(0, 0, off.width, off.height);
-
     try {
       await page.render({ canvasContext: ctx, viewport }).promise;
     } catch(e) {
-      // Rendu annulé (nouveau zoom arrivé entretemps) — ignorer
       this._rendering = false;
       if (this._pendingRender) { this._pendingRender = false; this._render(); }
       return;
     }
-
-    // ── Swap atomique : copier l'offscreen dans le canvas visible ──
     const vis = this._canvas;
-    vis.width  = off.width;
-    vis.height = off.height;
+    vis.width = off.width; vis.height = off.height;
     vis.style.width  = Math.round(pxW) + 'px';
     vis.style.height = Math.round(pxH) + 'px';
-    // Réinitialiser le transform CSS avant de dessiner
-    vis.style.transform = '';
-    vis.style.transformOrigin = '';
+    vis.style.transform = ''; vis.style.transformOrigin = '';
     vis.getContext('2d').drawImage(off, 0, 0);
-
-    // Repositionner proprement
     const topLeft = map.latLngToLayerPoint([b.lat_max, b.lon_min]);
     L.DomUtil.setPosition(vis, topLeft);
-
     this._lastRenderZoom = map.getZoom();
     this._rendering = false;
-
-    if (this._pendingRender) {
-      this._pendingRender = false;
-      this._render();
-    }
+    if (this._pendingRender) { this._pendingRender = false; this._render(); }
   },
 });
 
@@ -956,30 +927,18 @@ const PDFLayer = L.Layer.extend({
 // ══════════════════════════════════════════════════════
 function initMap() {
   if (state.map) { state.map.remove(); }
-  document.getElementById('pdf-canvas').style.display = 'none';
-
   const g = state.georef;
-  const center = g
-    ? [g.center_wgs84.lat, g.center_wgs84.lon]
-    : [48.08, -68.71];
+  const center = g ? [g.center_wgs84.lat, g.center_wgs84.lon] : [48.08, -68.71];
 
-  state.map = L.map('map', {
-    center, zoom: 13,
-    zoomControl: false,
-    attributionControl: false,
-  });
+  state.map = L.map('map', { center, zoom:13, zoomControl:false, attributionControl:false });
 
   if (g) {
     const b = g.bounds_wgs84;
-    const bounds = L.latLngBounds(
-      [b.lat_min, b.lon_min],
-      [b.lat_max, b.lon_max]
-    );
+    const bounds = L.latLngBounds([b.lat_min, b.lon_min], [b.lat_max, b.lon_max]);
     state.pdfLayer = new PDFLayer(state.pdf, g);
     state.pdfLayer.addTo(state.map);
     state.map.fitBounds(bounds);
   }
-
   state.map.on('click', onMapClick);
 }
 
@@ -987,35 +946,21 @@ function initMap() {
 //  GPS
 // ══════════════════════════════════════════════════════
 function startGPS() {
-  if (!navigator.geolocation) {
-    document.getElementById('gps-status').textContent = 'Non dispo';
-    return;
-  }
-  const opts = {
-    enableHighAccuracy: true,
-    maximumAge: 5000,
-    timeout: 10000
-  };
-  state.gpsWatchId = navigator.geolocation.watchPosition(onGPS, onGPSError, opts);
+  if (!navigator.geolocation) { document.getElementById('gps-status').textContent = 'Non dispo'; return; }
+  if (state.gpsWatchId) navigator.geolocation.clearWatch(state.gpsWatchId);
+  state.gpsWatchId = navigator.geolocation.watchPosition(onGPS, onGPSError,
+    { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
 }
 
 function onGPS(pos) {
-  const lat = pos.coords.latitude;
-  const lon = pos.coords.longitude;
-  const acc = pos.coords.accuracy;
-  state.currentPos = { lat, lon };
-  state.accuracy = acc;
-
-  // UI
+  const { latitude:lat, longitude:lon, accuracy:acc } = pos.coords;
+  state.currentPos = { lat, lon }; state.accuracy = acc;
   document.getElementById('gps-pill').className = 'gps-pill active';
   document.getElementById('gps-status').textContent = `±${Math.round(acc)}m`;
   document.getElementById('disp-lat').textContent = fmt(lat);
   document.getElementById('disp-lon').textContent = fmt(lon);
   document.getElementById('disp-acc').textContent = `${Math.round(acc)}m`;
-
   updatePosMarker(lat, lon, acc);
-
-  // Enregistrer point de tracé
   if (state.tracing) {
     state.tracePts.push({ lat, lon, t: new Date().toISOString() });
     state.traceLine.addLatLng([lat, lon]);
@@ -1029,31 +974,20 @@ function onGPSError(err) {
 }
 
 function updatePosMarker(lat, lon, acc) {
-  const map = state.map;
-  if (!map) return;
-
+  const map = state.map; if (!map) return;
   if (state.posMarker) {
     state.posMarker.setLatLng([lat, lon]);
     if (state.posCircle) state.posCircle.setLatLng([lat, lon]).setRadius(acc);
   } else {
-    // Cercle de précision
     state.posCircle = L.circle([lat, lon], {
-      radius: acc,
-      color: '#2196f3',
-      fillColor: '#2196f3',
-      fillOpacity: 0.08,
-      weight: 1,
-      dashArray: '4 4'
+      radius:acc, color:'#2196f3', fillColor:'#2196f3', fillOpacity:.08, weight:1, dashArray:'4 4'
     }).addTo(map);
-
-    // Point position
     const icon = L.divIcon({
-      className: '',
-      html: '<div class="pos-marker"><div class="pos-marker-ring"></div></div>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
+      className:'',
+      html:'<div class="pos-marker"><div class="pos-marker-ring"></div></div>',
+      iconSize:[20,20], iconAnchor:[10,10]
     });
-    state.posMarker = L.marker([lat, lon], { icon, zIndexOffset: 1000 }).addTo(map);
+    state.posMarker = L.marker([lat, lon], { icon, zIndexOffset:1000 }).addTo(map);
   }
 }
 
@@ -1061,14 +995,9 @@ function centerOnPos() {
   if (state.currentPos && state.map) {
     state.map.setView([state.currentPos.lat, state.currentPos.lon], Math.max(state.map.getZoom(), 15));
     toast('Centré sur ma position');
-  } else {
-    toast('Pas encore de position GPS');
-  }
+  } else { toast('Pas encore de position GPS'); }
 }
 
-// ══════════════════════════════════════════════════════
-//  ZOOM
-// ══════════════════════════════════════════════════════
 function zoomIn()  { state.map && state.map.zoomIn(); }
 function zoomOut() { state.map && state.map.zoomOut(); }
 
@@ -1095,89 +1024,68 @@ function openWpModal(latlng) {
   document.getElementById('wp-modal').classList.add('open');
   document.getElementById('wp-name-input').value = `WP-${state.wpCounter}`;
   document.getElementById('wp-comment-input').value = '';
-  document.getElementById('wp-modal-coords').textContent =
-    `Lat: ${fmt(latlng.lat)}  Lon: ${fmt(latlng.lng)}`;
-  // Réinitialiser photo
+  document.getElementById('wp-modal-coords').textContent = `Lat: ${fmt(latlng.lat)}  Lon: ${fmt(latlng.lng)}`;
   state.pendingWpPhoto = null;
   const preview = document.getElementById('wp-photo-preview');
   const photoBtn = document.getElementById('wp-photo-btn');
-  preview.src = '';
-  preview.classList.remove('has-photo');
-  photoBtn.textContent = '📷 Ajouter une photo';
-  photoBtn.classList.remove('has-photo');
+  preview.src = ''; preview.classList.remove('has-photo');
+  photoBtn.textContent = '📷 Ajouter une photo'; photoBtn.classList.remove('has-photo');
   document.getElementById('wp-photo-input').value = '';
   setTimeout(() => document.getElementById('wp-name-input').select(), 100);
 }
 
-function triggerPhotoCapture() {
-  document.getElementById('wp-photo-input').click();
-}
+function triggerPhotoCapture() { document.getElementById('wp-photo-input').click(); }
 
-// Lecture photo sélectionnée → compression → base64
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('wp-photo-input').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      // Compression canvas : max 1200px, qualité 0.78 JPEG
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 1200;
-        let w = img.width, h = img.height;
-        if (w > maxDim || h > maxDim) {
-          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
-          else        { w = Math.round(w * maxDim / h); h = maxDim; }
-        }
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = c.toDataURL('image/jpeg', 0.78);
-        state.pendingWpPhoto = dataUrl;
-        const preview = document.getElementById('wp-photo-preview');
-        preview.src = dataUrl;
-        preview.classList.add('has-photo');
-        const photoBtn = document.getElementById('wp-photo-btn');
-        photoBtn.textContent = '✓ Photo ajoutée (tap pour changer)';
-        photoBtn.classList.add('has-photo');
-        // Avertir si localStorage risque d'être saturé
-        checkStorageQuota();
-      };
-      img.src = ev.target.result;
+document.getElementById('wp-photo-input').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1200;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w >= h) { h = Math.round(h*maxDim/w); w = maxDim; }
+        else        { w = Math.round(w*maxDim/h); h = maxDim; }
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = c.toDataURL('image/jpeg', 0.78);
+      state.pendingWpPhoto = dataUrl;
+      const preview = document.getElementById('wp-photo-preview');
+      preview.src = dataUrl; preview.classList.add('has-photo');
+      const photoBtn = document.getElementById('wp-photo-btn');
+      photoBtn.textContent = '✓ Photo ajoutée (tap pour changer)'; photoBtn.classList.add('has-photo');
     };
-    reader.readAsDataURL(file);
-  });
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
 });
 
-function checkStorageQuota() {
-  try {
-    const used = JSON.stringify(state.waypoints).length;
-    if (used > 3_500_000) toast('⚠ Stockage local presque plein — exportez vos WP', 4000);
-  } catch(e) {}
-}
-
-function confirmWp() {
-  const name = document.getElementById('wp-name-input').value.trim() || `WP-${state.wpCounter}`;
+async function confirmWp() {
+  const name    = document.getElementById('wp-name-input').value.trim() || `WP-${state.wpCounter}`;
   const comment = document.getElementById('wp-comment-input').value.trim();
-  const latlng = state.pendingWpLatLng;
+  const latlng  = state.pendingWpLatLng;
   if (!latlng) return;
 
   const wp = {
     id: Date.now(),
-    name,
-    comment,
-    photo: state.pendingWpPhoto || null,   // base64 data URL JPEG ou null
-    lat: latlng.lat,
-    lon: latlng.lng,
+    projectId: state.currentProjectId,
+    name, comment,
+    photo: state.pendingWpPhoto || null,
+    lat: latlng.lat, lon: latlng.lng,
     timestamp: new Date().toISOString()
   };
   state.waypoints.push(wp);
   state.wpCounter++;
   state.pendingWpPhoto = null;
 
+  await dbPut('waypoints', wp);
+  await syncProjectMeta();
+
   addWpMarker(wp);
   renderWpList();
-  saveWaypoints();
   document.getElementById('wp-modal').classList.remove('open');
   document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
   toast(`${name} enregistré`);
@@ -1191,38 +1099,28 @@ function cancelWp() {
 function addWpMarker(wp) {
   if (!state.map) return;
   const icon = L.divIcon({
-    className: '',
-    html: `<div class="wp-icon"><div class="wp-pin"></div><div class="wp-label">${wp.name}</div></div>`,
-    iconSize: [28, 36],
-    iconAnchor: [14, 36]
+    className:'',
+    html:`<div class="wp-icon"><div class="wp-pin"></div><div class="wp-label">${wp.name}</div></div>`,
+    iconSize:[28,36], iconAnchor:[14,36]
   });
   const marker = L.marker([wp.lat, wp.lon], { icon }).addTo(state.map);
-
-  // Popup enrichie
   let popupHtml = '';
-  if (wp.photo) {
-    popupHtml += `<img class="wp-popup-img" src="${wp.photo}" alt="photo">`;
-  }
-  popupHtml += `<b>${wp.name}</b><br>`;
-  popupHtml += `<span style="font-size:10px;color:#666">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
-  if (wp.comment) {
-    popupHtml += `<br><span style="font-size:11px;color:#444;margin-top:3px;display:block">${wp.comment}</span>`;
-  }
-  marker.bindPopup(popupHtml, { maxWidth: 220 });
+  if (wp.photo) popupHtml += `<img class="wp-popup-img" src="${wp.photo}" alt="photo">`;
+  popupHtml += `<b>${wp.name}</b><br><span style="font-size:10px;color:#666">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
+  if (wp.comment) popupHtml += `<br><span style="font-size:11px;color:#444;margin-top:3px;display:block">${wp.comment}</span>`;
+  marker.bindPopup(popupHtml, { maxWidth:220 });
   state.wpMarkers.push({ id: wp.id, marker });
 }
 
-function deleteWp(id) {
+async function deleteWp(id) {
   const idx = state.waypoints.findIndex(w => w.id === id);
   if (idx === -1) return;
   state.waypoints.splice(idx, 1);
   const mIdx = state.wpMarkers.findIndex(m => m.id === id);
-  if (mIdx !== -1) {
-    state.map.removeLayer(state.wpMarkers[mIdx].marker);
-    state.wpMarkers.splice(mIdx, 1);
-  }
+  if (mIdx !== -1) { state.map.removeLayer(state.wpMarkers[mIdx].marker); state.wpMarkers.splice(mIdx, 1); }
+  await dbDelete('waypoints', id);
+  await syncProjectMeta();
   renderWpList();
-  saveWaypoints();
   document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
   toast('Waypoint supprimé');
 }
@@ -1253,161 +1151,90 @@ function toggleWpPanel() {
 }
 
 // ══════════════════════════════════════════════════════
-//  PERSISTANCE (localStorage)
-// ══════════════════════════════════════════════════════
-function saveWaypoints() {
-  try { localStorage.setItem('carte_terrain_wps', JSON.stringify(state.waypoints)); } catch(e) {}
-}
-
-function loadSavedWaypoints() {
-  try {
-    const saved = localStorage.getItem('carte_terrain_wps');
-    if (saved) {
-      state.waypoints = JSON.parse(saved);
-      const maxId = state.waypoints.reduce((m, w) => Math.max(m, w.id||0), 0);
-      state.wpCounter = state.waypoints.length + 1;
-      document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
-    }
-  } catch(e) {}
-}
-
-// ══════════════════════════════════════════════════════
 //  EXPORT GEOJSON
 // ══════════════════════════════════════════════════════
 function exportGeoJSON() {
   if (state.waypoints.length === 0) { toast('Aucun waypoint à exporter'); return; }
-
   const geojson = {
     type: 'FeatureCollection',
     features: state.waypoints.map(wp => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [wp.lon, wp.lat] },
-      properties: {
-        name: wp.name,
-        comment: wp.comment || '',
-        has_photo: !!wp.photo,
-        timestamp: wp.timestamp,
-        id: wp.id
-      }
+      properties: { name:wp.name, comment:wp.comment||'', has_photo:!!wp.photo, timestamp:wp.timestamp, id:wp.id }
     }))
   };
-
-  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
+  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type:'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
   a.download = `waypoints_${new Date().toISOString().slice(0,10)}.geojson`;
-  a.click();
-  URL.revokeObjectURL(url);
+  a.click(); URL.revokeObjectURL(url);
   toast(`${state.waypoints.length} WP exportés en GeoJSON`);
 }
 
 // ══════════════════════════════════════════════════════
-//  EXPORT KMZ (KML + photos dans ZIP)
+//  EXPORT KMZ
 // ══════════════════════════════════════════════════════
 async function exportKMZ() {
   if (state.waypoints.length === 0) { toast('Aucun waypoint à exporter'); return; }
-  if (typeof JSZip === 'undefined') { toast('JSZip non chargé — vérifiez la connexion'); return; }
-
+  if (typeof JSZip === 'undefined') { toast('JSZip non chargé'); return; }
   toast('Génération KMZ…', 3000);
 
   const zip = new JSZip();
   const photosFolder = zip.folder('photos');
-
-  // Générer les placemarks KML
   const placemarks = state.waypoints.map(wp => {
     const photoRef = wp.photo ? `photos/wp_${wp.id}.jpg` : null;
     const desc = [];
     if (wp.comment) desc.push(escapeXml(wp.comment));
-    if (photoRef) desc.push(`<img src="${photoRef}" style="max-width:300px">`);
+    if (photoRef)   desc.push(`<img src="${photoRef}" style="max-width:300px">`);
     const descCdata = desc.length ? `<description><![CDATA[${desc.join('<br>')}]]></description>` : '';
-    const styleId = photoRef ? 'wpStylePhoto' : 'wpStyle';
-
     return `  <Placemark>
-    <name>${escapeXml(wp.name)}</name>
-    ${descCdata}
+    <name>${escapeXml(wp.name)}</name>${descCdata}
     <TimeStamp><when>${wp.timestamp}</when></TimeStamp>
-    <styleUrl>#${styleId}</styleUrl>
+    <styleUrl>#${photoRef ? 'wpStylePhoto' : 'wpStyle'}</styleUrl>
     <Point><coordinates>${wp.lon},${wp.lat},0</coordinates></Point>
   </Placemark>`;
   }).join('\n');
 
-  // KML complet
   const kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-<Document>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
   <name>Waypoints Terfa — ${new Date().toISOString().slice(0,10)}</name>
-  <Style id="wpStyle">
-    <IconStyle>
-      <color>ff0066ff</color>
-      <scale>1.1</scale>
-      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon>
-    </IconStyle>
-    <LabelStyle><scale>0.8</scale></LabelStyle>
-  </Style>
-  <Style id="wpStylePhoto">
-    <IconStyle>
-      <color>ff0033ff</color>
-      <scale>1.2</scale>
-      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
-    </IconStyle>
-    <LabelStyle><scale>0.8</scale></LabelStyle>
-  </Style>
+  <Style id="wpStyle"><IconStyle><color>ff0066ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle><LabelStyle><scale>0.8</scale></LabelStyle></Style>
+  <Style id="wpStylePhoto"><IconStyle><color>ff0033ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon></IconStyle><LabelStyle><scale>0.8</scale></LabelStyle></Style>
 ${placemarks}
-</Document>
-</kml>`;
+</Document></kml>`;
 
   zip.file('doc.kml', kml);
-
-  // Ajouter les photos (base64 → Uint8Array)
   let photoCount = 0;
   for (const wp of state.waypoints) {
     if (!wp.photo) continue;
     try {
-      // data:image/jpeg;base64,XXXX  → extraire la partie base64
-      const b64 = wp.photo.split(',')[1];
+      const b64    = wp.photo.split(',')[1];
       const binary = atob(b64);
-      const bytes = new Uint8Array(binary.length);
+      const bytes  = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      photosFolder.file(`wp_${wp.id}.jpg`, bytes, { binary: true });
+      photosFolder.file(`wp_${wp.id}.jpg`, bytes, { binary:true });
       photoCount++;
-    } catch(e) {
-      console.warn(`Photo WP ${wp.id} ignorée:`, e);
-    }
+    } catch(e) { console.warn('Photo ignorée:', e); }
   }
 
-  // Générer le ZIP
-  const blob = await zip.generateAsync({
-    type: 'blob',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 }
-  });
-
+  const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{level:6} });
   const dateStr = new Date().toISOString().slice(0,10);
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
+  const a = document.createElement('a'); a.href = url;
   a.download = `terfa_waypoints_${dateStr}.kmz`;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  const photoMsg = photoCount > 0 ? ` · ${photoCount} photo(s)` : '';
-  toast(`KMZ exporté — ${state.waypoints.length} WP${photoMsg}`);
+  a.click(); URL.revokeObjectURL(url);
+  toast(`KMZ exporté — ${state.waypoints.length} WP${photoCount ? ` · ${photoCount} photo(s)` : ''}`);
 }
 
 function escapeXml(s) {
   if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
 
 // ══════════════════════════════════════════════════════
 //  UI HELPERS
 // ══════════════════════════════════════════════════════
-function setLoadStatus(msg) {
-  document.getElementById('load-status').textContent = msg;
-}
-
+function setLoadStatus(msg) { document.getElementById('load-status').textContent = msg; }
 function showProgress(pct) {
   const bar = document.getElementById('progress-bar');
   bar.style.display = 'block';
@@ -1415,39 +1242,30 @@ function showProgress(pct) {
 }
 
 // ══════════════════════════════════════════════════════
-//  ÉVÉNEMENTS FICHIERS
+//  ÉVÉNEMENTS FICHIERS (load-screen d'un projet existant)
 // ══════════════════════════════════════════════════════
 document.getElementById('file-pdf').addEventListener('change', async e => {
-  const f = e.target.files[0];
-  if (f) await loadPDF(f);
+  const f = e.target.files[0]; if (f) await loadPDF(f);
 });
-
 document.getElementById('file-json').addEventListener('change', async e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  try {
-    const text = await f.text();
-    state.georef = JSON.parse(text);
-    toast('JSON sidecar chargé ✓');
-  } catch(e) { toast('Erreur lecture JSON'); }
+  const f = e.target.files[0]; if (!f) return;
+  try { state.georef = JSON.parse(await f.text()); toast('JSON sidecar chargé ✓'); } catch(e) { toast('Erreur lecture JSON'); }
 });
 
-// Drag & drop
 const dz = document.getElementById('drop-zone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
 dz.addEventListener('drop', async e => {
-  e.preventDefault();
-  dz.classList.remove('drag-over');
+  e.preventDefault(); dz.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
   if (f && f.name.endsWith('.pdf')) await loadPDF(f);
 });
 dz.addEventListener('click', () => document.getElementById('file-pdf').click());
 
-// Keyboard
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     cancelWp();
+    closeConfirm();
     state.placingWp = false;
     document.body.classList.remove('placing-wp');
     document.getElementById('btn-wp').classList.remove('active');
@@ -1456,10 +1274,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '-') zoomOut();
 });
 
-// Resize → Leaflet gère le zoom nativement
-window.addEventListener('resize', () => {
-  if (state.map) state.map.invalidateSize();
-});
+window.addEventListener('resize', () => { if (state.map) state.map.invalidateSize(); });
 
 // ══════════════════════════════════════════════════════
 //  BOUSSOLE
@@ -1468,14 +1283,9 @@ function requestCompass() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission()
-      .then(result => {
-        if (result === 'granted') {
-          window.addEventListener('deviceorientation', onHeading);
-          document.getElementById('btn-compass').classList.add('active');
-          toast('Boussole activée');
-        } else {
-          toast('Permission boussole refusée');
-        }
+      .then(r => {
+        if (r === 'granted') { window.addEventListener('deviceorientation', onHeading); document.getElementById('btn-compass').classList.add('active'); toast('Boussole activée'); }
+        else toast('Permission boussole refusée');
       }).catch(() => toast('Erreur boussole'));
   } else {
     window.addEventListener('deviceorientation', onHeading);
@@ -1485,17 +1295,14 @@ function requestCompass() {
 }
 
 function onHeading(e) {
-  const heading = e.webkitCompassHeading != null
-    ? e.webkitCompassHeading
-    : (360 - (e.alpha || 0));
+  const heading = e.webkitCompassHeading != null ? e.webkitCompassHeading : (360-(e.alpha||0));
   state.heading = heading;
   if (state.posMarker) {
     const icon = state.posMarker.getElement();
     if (icon) {
       let arrow = icon.querySelector('.heading-marker');
       if (!arrow) {
-        arrow = document.createElement('div');
-        arrow.className = 'heading-marker';
+        arrow = document.createElement('div'); arrow.className = 'heading-marker';
         icon.querySelector('.pos-marker').appendChild(arrow);
       }
       icon.querySelector('.pos-marker').style.transform = `rotate(${heading}deg)`;
@@ -1508,56 +1315,51 @@ function onHeading(e) {
 // ══════════════════════════════════════════════════════
 function toggleTrace() {
   if (!state.tracing) {
-    state.tracing = true;
-    state.tracePts = [];
-    state.traceLine = L.polyline([], {
-      color: '#ff3d00',
-      weight: 3,
-      opacity: 0.85
-    }).addTo(state.map);
+    state.tracing = true; state.tracePts = [];
+    state.traceLine = L.polyline([], { color:'#ff3d00', weight:3, opacity:.85 }).addTo(state.map);
     document.getElementById('btn-trace').classList.add('recording');
     toast('Tracé démarré');
   } else {
     state.tracing = false;
     document.getElementById('btn-trace').classList.remove('recording');
-    if (state.tracePts.length > 1) {
-      exportGPX();
-    } else {
-      toast('Tracé arrêté — pas assez de points');
-    }
+    if (state.tracePts.length > 1) exportGPX();
+    else toast('Tracé arrêté — pas assez de points');
   }
 }
 
-function exportGPX() {
+async function exportGPX() {
   const pts = state.tracePts;
   const now = new Date().toISOString().slice(0,10);
-  let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Carte Terrain Terfa"
-  xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
-    <name>Tracé ${now}</name>
-    <trkseg>
-${pts.map(p => `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}">
-        <time>${p.t}</time>
-      </trkpt>`).join('\n')}
-    </trkseg>
-  </trk>
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Carte Terrain Terfa" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Tracé ${now}</name><trkseg>
+${pts.map(p => `    <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}"><time>${p.t}</time></trkpt>`).join('\n')}
+  </trkseg></trk>
 </gpx>`;
 
-  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `trace_${now}.gpx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // Sauvegarder le tracé en IndexedDB
+  if (state.currentProjectId) {
+    const trace = { id: Date.now(), projectId: state.currentProjectId, points: pts, timestamp: new Date().toISOString() };
+    await dbPut('traces', trace);
+    const project = await dbGet('projects', state.currentProjectId);
+    if (project) { project.traceCount = (project.traceCount||0) + 1; await dbPut('projects', project); }
+  }
+
+  const blob = new Blob([gpx], { type:'application/gpx+xml' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `trace_${now}.gpx`; a.click(); URL.revokeObjectURL(url);
   toast(`Tracé exporté — ${pts.length} points`);
 }
 
 // ══════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════
-loadSavedWaypoints();
+(async () => {
+  await openDB();
+  showScreen('home');
+  await renderProjectList();
+})();
 </script>
 </body>
 </html>
