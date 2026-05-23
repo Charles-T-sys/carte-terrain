@@ -1774,20 +1774,20 @@
 		var currentZoom = map.getZoom();
 		if (currentZoom === this._lastRenderZoom) return;
 
-		// Pendant le zoom : recalculer position ET scale
 		var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
 		var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
 		var cw = Math.abs(br.x - tl.x);
 		var ch = Math.abs(br.y - tl.y);
 		var pw = this._lastRenderPxW || cw;
 		var ph = this._lastRenderPxH || ch;
+		var sx = cw / pw;
+		var sy = ch / ph;
 
-		// Réinitialiser le transform avant setPosition pour éviter l'accumulation
-		this._canvas.style.transform = '';
-		this._canvas.style.transformOrigin = '';
-		L.DomUtil.setPosition(this._canvas, tl);
+		// Appliquer position et scale en un seul transform pour éviter l'accumulation
 		this._canvas.style.transformOrigin = '0 0';
-		this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+		this._canvas.style.transform = 
+			'translate(' + tl.x + 'px,' + tl.y + 'px) scale(' + sx + ',' + sy + ')';
+		// Ne pas utiliser setPosition (qui ajoute un translate3d en plus)
 	},
 
     _scheduleRender: function() {
@@ -1829,10 +1829,9 @@
       vis.height = canH;
       vis.style.width  = pxW + 'px';
       vis.style.height = pxH + 'px';
-      vis.style.transform = '';
-      vis.style.transformOrigin = '';
       vis.getContext('2d').drawImage(off, 0, 0);
-      L.DomUtil.setPosition(this._canvas, tl);
+      this._canvas.style.transformOrigin = '0 0';
+	  this._canvas.style.transform = 'translate(' + tl.x + 'px,' + tl.y + 'px)';
 
       // Mémoriser les dimensions CSS du dernier render pour _transformReposition
       this._lastRenderPxW = pxW;
