@@ -1769,24 +1769,26 @@
     },
 
     _transformReposition: function() {
-      // Pendant le pan : Leaflet déplace l'overlayPane entier automatiquement
-      // On intervient seulement pendant le zoom pour compenser le changement d'échelle
-      if (!this._canvas || !this._map || !this._bounds || !this._lastRenderZoom) return;
-      var map = this._map;
-      var currentZoom = map.getZoom();
-      if (currentZoom === this._lastRenderZoom) return; // pan pur — ne rien faire
+		if (!this._canvas || !this._map || !this._bounds || !this._lastRenderZoom) return;
+		var map = this._map;
+		var currentZoom = map.getZoom();
+		if (currentZoom === this._lastRenderZoom) return;
 
-      var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
-      var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
-      var cw = Math.abs(br.x - tl.x);
-      var ch = Math.abs(br.y - tl.y);
-      var pw = this._lastRenderPxW || cw;
-      var ph = this._lastRenderPxH || ch;
+		// Pendant le zoom : recalculer position ET scale
+		var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
+		var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
+		var cw = Math.abs(br.x - tl.x);
+		var ch = Math.abs(br.y - tl.y);
+		var pw = this._lastRenderPxW || cw;
+		var ph = this._lastRenderPxH || ch;
 
-      L.DomUtil.setPosition(this._canvas, tl);
-      this._canvas.style.transformOrigin = '0 0';
-      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
-    },
+		// Réinitialiser le transform avant setPosition pour éviter l'accumulation
+		this._canvas.style.transform = '';
+		this._canvas.style.transformOrigin = '';
+		L.DomUtil.setPosition(this._canvas, tl);
+		this._canvas.style.transformOrigin = '0 0';
+		this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+	},
 
     _scheduleRender: function() {
       if (!this._srcCanvas) return;
