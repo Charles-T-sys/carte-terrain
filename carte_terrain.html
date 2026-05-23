@@ -1743,11 +1743,13 @@
         if (!bounds) throw new Error('Géoréférencement introuvable');
         self._bounds = bounds;
 
-        // fitBounds + render maintenant que _srcCanvas est prêt
+        // fitBounds puis attendre moveend pour rendre à la bonne taille
         if (self._map) {
+          self._map.once('moveend', function() {
+            self._render();
+            if (self._options.onReady) self._options.onReady();
+          });
           self._map.fitBounds(bounds);
-          self._render();
-          if (self._options.onReady) self._options.onReady();
         }
 
       } catch(err) {
