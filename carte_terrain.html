@@ -1742,13 +1742,22 @@
         var bounds = getBoundsFromTags(ifd);
         if (!bounds) throw new Error('Géoréférencement introuvable');
         self._bounds = bounds;
+        window._dbgLayer = self; // debug
 
-        // fitBounds puis attendre moveend pour rendre à la bonne taille
         if (self._map) {
-          self._map.once('moveend', function() {
+          // fitBounds puis render après que Leaflet a repositionné la vue
+          // on écoute moveend UNE fois, avec fallback setTimeout
+          var rendered = false;
+          function doRender() {
+            if (rendered) return;
+            rendered = true;
+            console.log('doRender appelé, map zoom:', self._map ? self._map.getZoom() : 'null');
             self._render();
+            console.log('canvas apres render:', self._canvas ? self._canvas.width + 'x' + self._canvas.height : 'null');
             if (self._options.onReady) self._options.onReady();
-          });
+          }
+          self._map.once('moveend', doRender);
+          setTimeout(doRender, 500); // fallback si moveend ne se déclenche pas
           self._map.fitBounds(bounds);
         }
 
