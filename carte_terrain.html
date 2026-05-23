@@ -1795,12 +1795,14 @@
     },
 
     _scheduleRender: function() {
+      if (!this._srcCanvas) return;
       if (this._rendering) { this._pendingRender = true; return; }
       this._render();
     },
 
     _render: function() {
-      if (!this._srcCanvas || !this._bounds || !this._map) return;
+      if (!this._srcCanvas || !this._srcCanvas.width || !this._srcCanvas.height) return;
+      if (!this._bounds || !this._map) return;
       if (this._rendering) { this._pendingRender = true; return; }
       this._rendering = true;
 
