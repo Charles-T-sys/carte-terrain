@@ -14,6 +14,8 @@
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- JSZip (KMZ export) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
   :root {
@@ -370,7 +372,7 @@
     gap: 12px;
   }
   .modal h3 { font-size: 13px; color: var(--accent); letter-spacing: 1px; }
-  .modal input {
+  .modal input, .modal textarea {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--r);
@@ -380,9 +382,75 @@
     font-size: 13px;
     width: 100%;
   }
-  .modal input:focus { outline: none; border-color: var(--accent); }
+  .modal textarea {
+    resize: vertical;
+    min-height: 56px;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  .modal input:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
   .modal-coords { font-size: 10px; color: var(--muted); }
   .modal-actions { display: flex; gap: 8px; }
+
+  /* Photo dans le modal */
+  .photo-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .photo-preview {
+    width: 64px; height: 64px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    object-fit: cover;
+    display: none;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .photo-preview.has-photo { display: block; }
+  .photo-btn {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--r);
+    border: 1px dashed var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 11px;
+    cursor: pointer;
+    text-align: center;
+    transition: all .15s;
+  }
+  .photo-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .photo-btn.has-photo { border-style: solid; border-color: var(--accent2); color: var(--accent2); }
+
+  /* Miniature dans la liste WP */
+  .wp-thumb {
+    width: 36px; height: 36px;
+    border-radius: 4px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .wp-item-comment {
+    color: var(--muted);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+
+  /* Popup Leaflet photo */
+  .wp-popup-img {
+    width: 100%;
+    max-width: 200px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .leaflet-popup-content { font-family: var(--font); font-size: 12px; min-width: 120px; }
+  .leaflet-popup-content b { color: #333; }
   .btn { padding: 8px 16px; border-radius: var(--r); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: var(--font); font-size: 12px; cursor: pointer; flex: 1; transition: all .15s; }
   .btn:active { transform: scale(.96); }
   .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
@@ -504,7 +572,8 @@
       <button class="tool-btn warn" id="btn-wp" title="Ajouter waypoint" onclick="toggleWpMode()">📍</button>
       <button class="tool-btn" id="btn-wp-list" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
       <div class="tool-sep"></div>
-      <button class="tool-btn" id="btn-export" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
+      <button class="tool-btn" id="btn-export-geojson" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
+      <button class="tool-btn" id="btn-export-kmz" title="Exporter KMZ (avec photos)" onclick="exportKMZ()">🗂</button>
     </div>
     <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
     <div id="coords-bar">
@@ -530,6 +599,12 @@
   <div class="modal">
     <h3>📍 Nouveau waypoint</h3>
     <input type="text" id="wp-name-input" placeholder="Nom du waypoint…" maxlength="60">
+    <textarea id="wp-comment-input" placeholder="Commentaire (observation, note terrain…)" maxlength="500"></textarea>
+    <div class="photo-row">
+      <img class="photo-preview" id="wp-photo-preview" src="" alt="photo">
+      <button class="photo-btn" id="wp-photo-btn" onclick="triggerPhotoCapture()">📷 Ajouter une photo</button>
+    </div>
+    <input type="file" id="wp-photo-input" accept="image/*" capture="environment" style="display:none">
     <div class="modal-coords" id="wp-modal-coords"></div>
     <div class="modal-actions">
       <button class="btn" onclick="cancelWp()">Annuler</button>
@@ -560,6 +635,7 @@ const state = {
   gpsWatchId: null,
   placingWp: false,
   pendingWpLatLng: null,
+  pendingWpPhoto: null,   // base64 data URL ou null
   pdfScale: 1,
   pdfOffset: { x: 0, y: 0 },
   tracing: false,
@@ -961,25 +1037,86 @@ function onMapClick(e) {
 function openWpModal(latlng) {
   document.getElementById('wp-modal').classList.add('open');
   document.getElementById('wp-name-input').value = `WP-${state.wpCounter}`;
+  document.getElementById('wp-comment-input').value = '';
   document.getElementById('wp-modal-coords').textContent =
     `Lat: ${fmt(latlng.lat)}  Lon: ${fmt(latlng.lng)}`;
+  // Réinitialiser photo
+  state.pendingWpPhoto = null;
+  const preview = document.getElementById('wp-photo-preview');
+  const photoBtn = document.getElementById('wp-photo-btn');
+  preview.src = '';
+  preview.classList.remove('has-photo');
+  photoBtn.textContent = '📷 Ajouter une photo';
+  photoBtn.classList.remove('has-photo');
+  document.getElementById('wp-photo-input').value = '';
   setTimeout(() => document.getElementById('wp-name-input').select(), 100);
+}
+
+function triggerPhotoCapture() {
+  document.getElementById('wp-photo-input').click();
+}
+
+// Lecture photo sélectionnée → compression → base64
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('wp-photo-input').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      // Compression canvas : max 1200px, qualité 0.78 JPEG
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1200;
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else        { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = c.toDataURL('image/jpeg', 0.78);
+        state.pendingWpPhoto = dataUrl;
+        const preview = document.getElementById('wp-photo-preview');
+        preview.src = dataUrl;
+        preview.classList.add('has-photo');
+        const photoBtn = document.getElementById('wp-photo-btn');
+        photoBtn.textContent = '✓ Photo ajoutée (tap pour changer)';
+        photoBtn.classList.add('has-photo');
+        // Avertir si localStorage risque d'être saturé
+        checkStorageQuota();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+function checkStorageQuota() {
+  try {
+    const used = JSON.stringify(state.waypoints).length;
+    if (used > 3_500_000) toast('⚠ Stockage local presque plein — exportez vos WP', 4000);
+  } catch(e) {}
 }
 
 function confirmWp() {
   const name = document.getElementById('wp-name-input').value.trim() || `WP-${state.wpCounter}`;
+  const comment = document.getElementById('wp-comment-input').value.trim();
   const latlng = state.pendingWpLatLng;
   if (!latlng) return;
 
   const wp = {
     id: Date.now(),
     name,
+    comment,
+    photo: state.pendingWpPhoto || null,   // base64 data URL JPEG ou null
     lat: latlng.lat,
     lon: latlng.lng,
     timestamp: new Date().toISOString()
   };
   state.waypoints.push(wp);
   state.wpCounter++;
+  state.pendingWpPhoto = null;
 
   addWpMarker(wp);
   renderWpList();
@@ -1003,7 +1140,18 @@ function addWpMarker(wp) {
     iconAnchor: [14, 36]
   });
   const marker = L.marker([wp.lat, wp.lon], { icon }).addTo(state.map);
-  marker.bindPopup(`<b>${wp.name}</b><br>${fmt(wp.lat)}, ${fmt(wp.lon)}`);
+
+  // Popup enrichie
+  let popupHtml = '';
+  if (wp.photo) {
+    popupHtml += `<img class="wp-popup-img" src="${wp.photo}" alt="photo">`;
+  }
+  popupHtml += `<b>${wp.name}</b><br>`;
+  popupHtml += `<span style="font-size:10px;color:#666">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
+  if (wp.comment) {
+    popupHtml += `<br><span style="font-size:11px;color:#444;margin-top:3px;display:block">${wp.comment}</span>`;
+  }
+  marker.bindPopup(popupHtml, { maxWidth: 220 });
   state.wpMarkers.push({ id: wp.id, marker });
 }
 
@@ -1030,10 +1178,11 @@ function renderWpList() {
   }
   list.innerHTML = state.waypoints.map(wp => `
     <div class="wp-item">
-      <span class="wp-item-icon">📍</span>
-      <div style="flex:1">
+      ${wp.photo ? `<img class="wp-thumb" src="${wp.photo}" alt="">` : '<span class="wp-item-icon">📍</span>'}
+      <div style="flex:1;min-width:0">
         <div class="wp-item-name">${wp.name}</div>
         <div class="wp-item-coords">${fmt(wp.lat)}, ${fmt(wp.lon)}</div>
+        ${wp.comment ? `<div class="wp-item-comment">${wp.comment}</div>` : ''}
       </div>
       <button class="wp-item-del" onclick="deleteWp(${wp.id})">✕</button>
     </div>
@@ -1076,7 +1225,13 @@ function exportGeoJSON() {
     features: state.waypoints.map(wp => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [wp.lon, wp.lat] },
-      properties: { name: wp.name, timestamp: wp.timestamp, id: wp.id }
+      properties: {
+        name: wp.name,
+        comment: wp.comment || '',
+        has_photo: !!wp.photo,
+        timestamp: wp.timestamp,
+        id: wp.id
+      }
     }))
   };
 
@@ -1088,6 +1243,105 @@ function exportGeoJSON() {
   a.click();
   URL.revokeObjectURL(url);
   toast(`${state.waypoints.length} WP exportés en GeoJSON`);
+}
+
+// ══════════════════════════════════════════════════════
+//  EXPORT KMZ (KML + photos dans ZIP)
+// ══════════════════════════════════════════════════════
+async function exportKMZ() {
+  if (state.waypoints.length === 0) { toast('Aucun waypoint à exporter'); return; }
+  if (typeof JSZip === 'undefined') { toast('JSZip non chargé — vérifiez la connexion'); return; }
+
+  toast('Génération KMZ…', 3000);
+
+  const zip = new JSZip();
+  const photosFolder = zip.folder('photos');
+
+  // Générer les placemarks KML
+  const placemarks = state.waypoints.map(wp => {
+    const photoRef = wp.photo ? `photos/wp_${wp.id}.jpg` : null;
+    const desc = [];
+    if (wp.comment) desc.push(escapeXml(wp.comment));
+    if (photoRef) desc.push(`<img src="${photoRef}" style="max-width:300px">`);
+    const descCdata = desc.length ? `<description><![CDATA[${desc.join('<br>')}]]></description>` : '';
+    const styleId = photoRef ? 'wpStylePhoto' : 'wpStyle';
+
+    return `  <Placemark>
+    <name>${escapeXml(wp.name)}</name>
+    ${descCdata}
+    <TimeStamp><when>${wp.timestamp}</when></TimeStamp>
+    <styleUrl>#${styleId}</styleUrl>
+    <Point><coordinates>${wp.lon},${wp.lat},0</coordinates></Point>
+  </Placemark>`;
+  }).join('\n');
+
+  // KML complet
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Waypoints Terfa — ${new Date().toISOString().slice(0,10)}</name>
+  <Style id="wpStyle">
+    <IconStyle>
+      <color>ff0066ff</color>
+      <scale>1.1</scale>
+      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle><scale>0.8</scale></LabelStyle>
+  </Style>
+  <Style id="wpStylePhoto">
+    <IconStyle>
+      <color>ff0033ff</color>
+      <scale>1.2</scale>
+      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle><scale>0.8</scale></LabelStyle>
+  </Style>
+${placemarks}
+</Document>
+</kml>`;
+
+  zip.file('doc.kml', kml);
+
+  // Ajouter les photos (base64 → Uint8Array)
+  let photoCount = 0;
+  for (const wp of state.waypoints) {
+    if (!wp.photo) continue;
+    try {
+      // data:image/jpeg;base64,XXXX  → extraire la partie base64
+      const b64 = wp.photo.split(',')[1];
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      photosFolder.file(`wp_${wp.id}.jpg`, bytes, { binary: true });
+      photoCount++;
+    } catch(e) {
+      console.warn(`Photo WP ${wp.id} ignorée:`, e);
+    }
+  }
+
+  // Générer le ZIP
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  });
+
+  const dateStr = new Date().toISOString().slice(0,10);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `terfa_waypoints_${dateStr}.kmz`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  const photoMsg = photoCount > 0 ? ` · ${photoCount} photo(s)` : '';
+  toast(`KMZ exporté — ${state.waypoints.length} WP${photoMsg}`);
+}
+
+function escapeXml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
 
 // ══════════════════════════════════════════════════════
