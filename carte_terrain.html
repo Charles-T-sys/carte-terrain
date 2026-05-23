@@ -1774,8 +1774,9 @@
       var tl = map.latLngToLayerPoint(this._bounds.getNorthWest());
       var br = map.latLngToLayerPoint(this._bounds.getSouthEast());
       var cw = Math.abs(br.x - tl.x), ch = Math.abs(br.y - tl.y);
-      var pw = parseFloat(this._canvas.style.width)  || cw;
-      var ph = parseFloat(this._canvas.style.height) || ch;
+      // Utiliser les dimensions stockées au dernier render, pas style.width
+      var pw = this._lastRenderPxW || cw;
+      var ph = this._lastRenderPxH || ch;
       L.DomUtil.setPosition(this._canvas, tl);
       this._canvas.style.transformOrigin = '0 0';
       this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
@@ -1800,20 +1801,34 @@
       var pxH = Math.max(1, Math.round(Math.abs(br.y - tl.y)));
       var dpr = window.devicePixelRatio || 1;
 
+      // Limite WebKit iOS : max 4096px par dimension
+      var maxDim = 4096;
+      var canW = Math.min(pxW * dpr, maxDim);
+      var canH = Math.min(pxH * dpr, maxDim);
+
       var off = this._offscreen;
-      off.width  = pxW * dpr;
-      off.height = pxH * dpr;
-      off.getContext('2d').drawImage(this._srcCanvas, 0, 0, off.width, off.height);
+      off.width  = canW;
+      off.height = canH;
+      try {
+        off.getContext('2d').drawImage(this._srcCanvas, 0, 0, canW, canH);
+      } catch(e) {
+        this._rendering = false;
+        return;
+      }
 
       var vis = this._canvas;
-      vis.width  = off.width;
-      vis.height = off.height;
+      vis.width  = canW;
+      vis.height = canH;
       vis.style.width  = pxW + 'px';
       vis.style.height = pxH + 'px';
       vis.style.transform = '';
       vis.style.transformOrigin = '';
       vis.getContext('2d').drawImage(off, 0, 0);
-      L.DomUtil.setPosition(vis, tl);
+      L.DomUtil.setPosition(this._canvas, tl);
+
+      // Mémoriser les dimensions CSS du dernier render pour _transformReposition
+      this._lastRenderPxW = pxW;
+      this._lastRenderPxH = pxH;
 
       this._rendering = false;
       if (this._pendingRender) { this._pendingRender = false; this._render(); }
