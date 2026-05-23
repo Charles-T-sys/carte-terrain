@@ -1739,14 +1739,12 @@
 
         var ifd = ifds[0];
 
-        // Décoder les pixels
+        // decodeImage DOIT être appelé avant de lire width/height
         UTIF.decodeImage(self._buffer, ifd, ifds);
         var rgba = UTIF.toRGBA8(ifd);
 
-        // UTIF stocke width/height dans ifd.width et ifd.height
-        // mais aussi dans les tags t256/t257
-        self._imgW = ifd.width  || (getTag(ifd, 256) && getTag(ifd, 256)[0]);
-        self._imgH = ifd.height || (getTag(ifd, 257) && getTag(ifd, 257)[0]);
+        self._imgW = ifd.width;
+        self._imgH = ifd.height;
 
         if (!self._imgW || !self._imgH) throw new Error('Dimensions TIFF invalides: ' + self._imgW + 'x' + self._imgH);
         if (!rgba || !rgba.length) throw new Error('Pixels RGBA vides');
