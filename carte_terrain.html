@@ -440,6 +440,16 @@
   transform-origin: bottom center;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
 }
+
+.tool-btn.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: blink 1.5s infinite;
+}
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: .4; }
+}
 </style>
 </head>
 <body>
@@ -486,6 +496,7 @@
     <div id="toolbar">
       <button class="tool-btn active" id="btn-gps" title="Centrer sur ma position" onclick="centerOnPos()">◎</button>
       <button class="tool-btn" id="btn-compass" title="Activer boussole" onclick="requestCompass()">🧭</button>
+      <button class="tool-btn" id="btn-trace" title="Tracé on/off" onclick="toggleTrace()">⏺</button>
       <div class="tool-sep"></div>
       <button class="tool-btn" id="btn-zoom-in" title="Zoom +" onclick="zoomIn()">＋</button>
       <button class="tool-btn" id="btn-zoom-out" title="Zoom −" onclick="zoomOut()">－</button>
@@ -551,6 +562,9 @@ const state = {
   pendingWpLatLng: null,
   pdfScale: 1,
   pdfOffset: { x: 0, y: 0 },
+  tracing: false,
+  tracePts: [],
+  traceLine: null,
 };
 
 // ══════════════════════════════════════════════════════
@@ -867,6 +881,12 @@ function onGPS(pos) {
   document.getElementById('disp-acc').textContent = `${Math.round(acc)}m`;
 
   updatePosMarker(lat, lon, acc);
+
+  // Enregistrer point de tracé
+  if (state.tracing) {
+    state.tracePts.push({ lat, lon, t: new Date().toISOString() });
+    state.traceLine.addLatLng([lat, lon]);
+  }
 }
 
 function onGPSError(err) {
@@ -1170,6 +1190,57 @@ function onHeading(e) {
       icon.querySelector('.pos-marker').style.transform = `rotate(${heading}deg)`;
     }
   }
+}
+
+// ══════════════════════════════════════════════════════
+//  TRACÉ GPX
+// ══════════════════════════════════════════════════════
+function toggleTrace() {
+  if (!state.tracing) {
+    state.tracing = true;
+    state.tracePts = [];
+    state.traceLine = L.polyline([], {
+      color: '#ff3d00',
+      weight: 3,
+      opacity: 0.85
+    }).addTo(state.map);
+    document.getElementById('btn-trace').classList.add('recording');
+    toast('Tracé démarré');
+  } else {
+    state.tracing = false;
+    document.getElementById('btn-trace').classList.remove('recording');
+    if (state.tracePts.length > 1) {
+      exportGPX();
+    } else {
+      toast('Tracé arrêté — pas assez de points');
+    }
+  }
+}
+
+function exportGPX() {
+  const pts = state.tracePts;
+  const now = new Date().toISOString().slice(0,10);
+  let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Carte Terrain Terfa"
+  xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Tracé ${now}</name>
+    <trkseg>
+${pts.map(p => `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}">
+        <time>${p.t}</time>
+      </trkpt>`).join('\n')}
+    </trkseg>
+  </trk>
+</gpx>`;
+
+  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `trace_${now}.gpx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Tracé exporté — ${pts.length} points`);
 }
 
 // ══════════════════════════════════════════════════════
