@@ -2076,7 +2076,8 @@ body.placing-wp #placing-hint{display:block}
     <button class="tool-btn" onclick="zoomIn()">＋</button>
     <button class="tool-btn" onclick="zoomOut()">－</button>
     <div class="tool-sep"></div>
-    <button class="tool-btn warn" id="btn-wp" title="Mire — naviguer puis retapper pour déposer WP" onclick="toggleCrosshair()">⊕</button>
+    <button class="tool-btn" id="btn-crosshair" title="Mire on/off" onclick="toggleCrosshair()">⊕</button>
+	<button class="tool-btn warn" id="btn-wp" title="Ajouter waypoint (clic carte)" onclick="toggleWpMode()">📍</button>
     <button class="tool-btn" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
     <div class="tool-sep"></div>
     <button class="tool-btn" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
@@ -2543,22 +2544,16 @@ function zoomOut() { state.map?.zoomOut(); }
 //  MIRE + WAYPOINTS
 // ══════════════════════════════════════════════════════
 function toggleCrosshair() {
-  if (!state.crosshairMode) {
-    // Activer la mire
-    state.crosshairMode = true;
-    document.getElementById('crosshair').classList.add('active');
-    document.getElementById('crosshair-coords').classList.add('active');
-    document.getElementById('btn-wp').classList.add('active');
+  state.crosshairMode = !state.crosshairMode;
+  document.getElementById('crosshair').classList.toggle('active', state.crosshairMode);
+  document.getElementById('crosshair-coords').classList.toggle('active', state.crosshairMode);
+  document.getElementById('btn-crosshair').classList.toggle('active', state.crosshairMode);
+  if (state.crosshairMode) {
     updateCrosshairCoords();
     state.map && state.map.on('move', updateCrosshairCoords);
-    toast('Mire active — retapper ⊕ pour déposer');
+    toast('Mire active');
   } else {
-    // Mire déjà active → déposer le WP au centre
-    if (!state.map) return;
-    const center = state.map.getCenter();
-    state.pendingWpLatLng = center;
-    openWpModal(center);
-    // La mire se ferme après confirmWp() ou cancelWp()
+    state.map && state.map.off('move', updateCrosshairCoords);
   }
 }
 function closeCrosshair() {
@@ -2566,7 +2561,7 @@ function closeCrosshair() {
   state.crosshairMode = false;
   document.getElementById('crosshair').classList.remove('active');
   document.getElementById('crosshair-coords').classList.remove('active');
-  document.getElementById('btn-wp').classList.remove('active');
+  document.getElementById('btn-crosshair').classList.remove('active');
   state.map && state.map.off('move', updateCrosshairCoords);
 }
 function updateCrosshairCoords() {
@@ -2575,6 +2570,21 @@ function updateCrosshairCoords() {
   document.getElementById('crosshair-coords').textContent =
     `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
 }
+function toggleWpMode() {
+  state.placingWp = !state.placingWp;
+  document.body.classList.toggle('placing-wp', state.placingWp);
+  document.getElementById('btn-wp').classList.toggle('active', state.placingWp);
+  if (state.placingWp) toast('Toucher la carte pour placer un waypoint');
+}
+function onMapClick(e) {
+  if (!state.placingWp) return;
+  state.pendingWpLatLng = e.latlng;
+  openWpModal(e.latlng);
+  state.placingWp = false;
+  document.body.classList.remove('placing-wp');
+  document.getElementById('btn-wp').classList.remove('active');
+}
+
 // onMapClick conservé mais sans comportement waypoint
 function onMapClick(e) { /* réservé pour usage futur */ }
 function openWpModal(latlng) {
