@@ -1696,25 +1696,27 @@
 		this._map = map;
 		this._canvas = document.createElement('canvas');
 		this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-		// Dans mapPane au lieu d'overlayPane — évite le double transform pendant le zoom iOS
 		map.getPanes().mapPane.appendChild(this._canvas);
 		this._offscreen = document.createElement('canvas');
+		this._zooming = false;
 
 		map.on('move',            this._onMove,        this);
 		map.on('moveend zoomend', this._scheduleRender, this);
-		map.on('zoomanim',        this._onZoomAnim,     this);
+		map.on('zoomstart',       this._onZoomStart,    this);
+		map.on('zoomend',         this._onZoomEnd,      this);
 
 		var self = this;
 		setTimeout(function() { self._loadTiff(); }, 0);
 		return this;
 	},
 
-		onRemove: function(map) {
+	onRemove: function(map) {
 		if (this._canvas && this._canvas.parentNode)
 			this._canvas.parentNode.removeChild(this._canvas);
 		map.off('move',            this._onMove,        this);
 		map.off('moveend zoomend', this._scheduleRender, this);
-		map.off('zoomanim',        this._onZoomAnim,     this);
+		map.off('zoomstart',       this._onZoomStart,    this);
+		map.off('zoomend',         this._onZoomEnd,      this);
 	},
 
     _loadTiff: function() {
@@ -1772,13 +1774,15 @@
 
     _onMove: function() {
 		if (!this._canvas || !this._map || !this._bounds || !this._lastRenderPxW) return;
-		if (this._map._animatingZoom) return;
+		if (this._zooming) return;
 		var map = this._map;
 		var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
 		L.DomUtil.setPosition(this._canvas, tl);
 	},
 
-    _onZoomAnim: function() {},
+    _onZoomStart: function() { this._zooming = true; },
+	_onZoomEnd:   function() { this._zooming = false; },
+	_onZoomAnim:  function() {},
 
     _scheduleRender: function() {
       if (!this._srcCanvas) return;
