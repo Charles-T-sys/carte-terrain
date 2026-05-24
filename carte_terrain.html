@@ -1977,9 +1977,13 @@ body.measuring #measure-hint{display:block}
 
 /* ── COORDS BAR ── */
 #coords-bar{position:absolute;bottom:0;left:0;right:0;z-index:499;background:rgba(17,26,17,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;align-items:center;padding:6px 12px;gap:14px;font-size:11px;color:var(--muted)}
-.coord-val{color:var(--text);font-weight:bold}
-.acc-val{color:var(--accent2)}
-.coords-bar-label{color:var(--muted);font-size:10px}
+#nav-banner{position:absolute;top:0;left:0;right:0;z-index:498;background:rgba(10,30,10,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:2px solid #4caf50;display:none;align-items:center;padding:8px 12px;gap:10px;font-family:'Courier New',monospace}
+#nav-banner.active{display:flex}
+#nav-banner-name{font-size:11px;color:#7cb87c;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nav-banner-dist{font-size:16px;font-weight:bold;color:#c8f0c8;min-width:70px;text-align:right}
+#nav-banner-arrow{width:36px;height:36px;flex-shrink:0}
+#nav-banner-deg{font-size:11px;color:#7cb87c;min-width:36px;text-align:center}
+#nav-banner-stop{background:none;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:'Courier New',monospace;flex-shrink:0}
 
 /* ── WAYPOINT PANEL ── */
 #wp-panel{position:absolute;bottom:36px;left:0;right:0;z-index:600;background:var(--panel);border-top:1px solid var(--border);padding:12px;transform:translateY(100%);transition:transform .25s ease;max-height:50dvh;overflow-y:auto;display:none}
@@ -2162,8 +2166,21 @@ body.placing-wp #placing-hint{display:block}
   <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
   <div id="measure-hint">📐 Tap = point · Double-tap = terminer</div>
 
-  <!-- MIRE CENTRALE -->
-  <div id="crosshair">
+	<!-- BANNER NAVIGATION -->
+	<div id="nav-banner">
+		<svg id="nav-banner-arrow" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+		<polygon points="18,3 27,28 18,22 9,28" fill="#4caf50" opacity="0.9"/>
+		</svg>
+		<div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+		<div id="nav-banner-name">—</div>
+		<div id="nav-banner-deg">—°</div>
+		</div>
+		<div id="nav-banner-dist">—</div>
+		<button id="nav-banner-stop" onclick="stopNav()">✕ Stop</button>
+	</div>
+
+	<!-- MIRE CENTRALE -->
+	<div id="crosshair">
     <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
       <circle cx="24" cy="24" r="20" fill="none" stroke="white" stroke-width="1" stroke-opacity="0.35"/>
       <circle cx="24" cy="24" r="20" fill="none" stroke="#ff6d00" stroke-width="1.5" stroke-dasharray="6 5" stroke-dashoffset="3"/>
@@ -2428,6 +2445,7 @@ const state = {
   prevGPS: null,
   wpShape:'circle', wpColor:'#ff6d00', editingWpId:null,
   traceColor:'#ff3d00', traceWeight:4, movingWpId:null,
+  navTargetId: null,
 };
 
 // ══════════════════════════════════════════════════════
@@ -2772,6 +2790,7 @@ function onGPS(pos) {
 
   updatePosMarker(lat, lon, acc);
   if (state.tracing) { state.tracePts.push({ lat, lon, t: new Date().toISOString() }); state.traceLine.addLatLng([lat,lon]); }
+  updateNavBanner();
 }
 function onGPSError(err) {
   document.getElementById('gps-pill').className = 'gps-pill no-fix';
@@ -3089,19 +3108,89 @@ function addWpMarker(wp){
   if(!state.map)return;
   const shape=wp.shape||'circle',color=wp.color||'#ff6d00';
   const svgHtml=wpShapeSvg(shape,color);
-  const icon=L.divIcon({className:'',html:`<div class="wp-icon" style="width:24px;height:30px">${svgHtml}<div class="wp-label">${wp.name}</div></div>`,iconSize:[24,30],iconAnchor:[12,30]});
+  const icon=L.divIcon({className:'',html:'<div class="wp-icon" style="width:24px;height:30px">'+svgHtml+'<div class="wp-label">'+wp.name+'</div></div>',iconSize:[24,30],iconAnchor:[12,30]});
   const marker=L.marker([wp.lat,wp.lon],{icon}).addTo(state.map);
   const photos=wp.photos||(wp.photo?[wp.photo]:[]);
-  let html=photos.map(p=>`<img class="wp-popup-img" src="${p}" alt="">`).join('');
-  html+=`<b>${wp.name}</b><br><span style="font-size:10px;color:#aaa">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
-  if(wp.comment)html+=`<br><span style="font-size:11px;color:#ccc;display:block;margin-top:3px">${wp.comment}</span>`;
-  html+=`<div style="display:flex;gap:6px;margin-top:8px">
-    <button onclick="editWp(${wp.id});state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #4caf50;background:rgba(76,175,80,.15);color:#4caf50;font-size:11px;cursor:pointer;font-family:monospace">✎ Éditer</button>
-    <button onclick="startMoveWp(${wp.id});state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #ff8f00;background:rgba(255,143,0,.1);color:#ff8f00;font-size:11px;cursor:pointer;font-family:monospace">⤧ Déplacer</button>
-    <button onclick="deleteWp(${wp.id});state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #e53935;background:rgba(229,57,53,.1);color:#e53935;font-size:11px;cursor:pointer;font-family:monospace">✕ Suppr</button>
-  </div>`;
-  marker.bindPopup(html,{maxWidth:240});
+  let html=photos.map(function(p){return '<img class="wp-popup-img" src="'+p+'" alt="">';}).join('');
+  html+='<b>'+wp.name+'</b><br><span style="font-size:10px;color:#aaa">'+fmt(wp.lat)+', '+fmt(wp.lon)+'</span>';
+  if(wp.comment)html+='<br><span style="font-size:11px;color:#ccc;display:block;margin-top:3px">'+wp.comment+'</span>';
+  html+='<div style="display:flex;gap:6px;margin-top:8px">'
+    +'<button onclick="editWp('+wp.id+');state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #4caf50;background:rgba(76,175,80,.15);color:#4caf50;font-size:11px;cursor:pointer;font-family:monospace">\u270e \u00c9diter</button>'
+    +'<button onclick="startNav('+wp.id+');state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #2196f3;background:rgba(33,150,243,.12);color:#64b5f6;font-size:11px;cursor:pointer;font-family:monospace">\u27a4 Nav</button>'
+    +'<button onclick="startMoveWp('+wp.id+');state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #ff8f00;background:rgba(255,143,0,.1);color:#ff8f00;font-size:11px;cursor:pointer;font-family:monospace">\u2927 D\u00e9placer</button>'
+    +'<button onclick="deleteWp('+wp.id+');state.map.closePopup()" style="flex:1;padding:6px 4px;border-radius:4px;border:1px solid #e53935;background:rgba(229,57,53,.1);color:#e53935;font-size:11px;cursor:pointer;font-family:monospace">\u2715 Suppr</button>'
+    +'</div>';
+  marker.bindPopup(html,{maxWidth:260});
+
+  // Long-press pour démarrer la navigation directement
+  var lpTimer=null;
+  var el=marker.getElement?marker.getElement():null;
+  function startLp(e){
+    lpTimer=setTimeout(function(){
+      lpTimer=null;
+      state.map.closePopup();
+      startNav(wp.id);
+    },600);
+  }
+  function cancelLp(){if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}}
+  marker.on('mousedown',startLp);
+  marker.on('touchstart',startLp);
+  marker.on('mouseup',cancelLp);
+  marker.on('mousemove',cancelLp);
+  marker.on('touchend',cancelLp);
+  marker.on('touchmove',cancelLp);
+
   state.wpMarkers.push({id:wp.id,marker});
+}
+
+// ── Navigation vers WP ──────────────────────────────────
+function startNav(id){
+  const wp=state.waypoints.find(function(w){return w.id===id;});
+  if(!wp){return;}
+  state.navTargetId=id;
+  document.getElementById('nav-banner-name').textContent='\u27a4 '+wp.name;
+  document.getElementById('nav-banner').classList.add('active');
+  updateNavBanner();
+  toast('Navigation \u2192 '+wp.name);
+}
+function stopNav(){
+  state.navTargetId=null;
+  document.getElementById('nav-banner').classList.remove('active');
+}
+function updateNavBanner(){
+  if(!state.navTargetId)return;
+  const wp=state.waypoints.find(function(w){return w.id===state.navTargetId;});
+  if(!wp){stopNav();return;}
+  const banner=document.getElementById('nav-banner');
+  if(!banner.classList.contains('active'))return;
+
+  const distEl=document.getElementById('nav-banner-dist');
+  const degEl=document.getElementById('nav-banner-deg');
+  const arrow=document.getElementById('nav-banner-arrow').querySelector('polygon');
+
+  if(!state.currentPos){
+    distEl.textContent='—';
+    degEl.textContent='Pas de GPS';
+    return;
+  }
+  const pos=state.currentPos;
+  // Distance Haversine (lon pour wp, lat/lon objets différents de haversine existant)
+  const R=6371000, toRad=function(x){return x*Math.PI/180;};
+  const dLat=toRad(wp.lat-pos.lat), dLon=toRad(wp.lon-pos.lon);
+  const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(pos.lat))*Math.cos(toRad(wp.lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+  const dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  distEl.textContent=fmtDist(dist);
+
+  // Cap vers WP (bearing)
+  const y=Math.sin(toRad(wp.lon-pos.lon))*Math.cos(toRad(wp.lat));
+  const x=Math.cos(toRad(pos.lat))*Math.sin(toRad(wp.lat))-Math.sin(toRad(pos.lat))*Math.cos(toRad(wp.lat))*Math.cos(toRad(wp.lon-pos.lon));
+  const bearing=(Math.atan2(y,x)*180/Math.PI+360)%360;
+  degEl.textContent=Math.round(bearing)+'\u00b0';
+
+  // Rotation flèche SVG : bearing corrigé par cap device si dispo
+  var arrowAngle=bearing;
+  if(state.heading!==null){arrowAngle=(bearing-state.heading+360)%360;}
+  if(arrow){arrow.setAttribute('transform','rotate('+arrowAngle+',18,18)');}
 }
 function selectCat(btn){
   document.querySelectorAll('#sym-cat-row .sym-cat').forEach(b=>b.classList.remove('selected'));
