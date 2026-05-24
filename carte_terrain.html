@@ -2042,6 +2042,18 @@ body.placing-wp #placing-hint{display:block}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .export-part-btn{flex:1;padding:8px 4px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;touch-action:manipulation;transition:all .15s}
 .export-part-btn.selected{border-color:var(--accent);color:var(--accent);background:rgba(76,175,80,.1)}
+
+.sym-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sym-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.sym-shape{width:36px;height:36px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.sym-shape.selected{border-color:var(--accent);background:rgba(76,175,80,.15)}
+.sym-shape svg{pointer-events:none}
+.sym-cat{padding:6px 10px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.sym-cat.selected{border-color:var(--accent);color:var(--text)}
+.sym-color-wrap{display:flex;align-items:center;gap:8px}
+.sym-color-swatch{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;overflow:hidden;padding:0;position:relative;display:flex;align-items:center;justify-content:center}
+.sym-color-swatch input[type=color]{position:absolute;width:200%;height:200%;border:none;background:none;cursor:pointer;opacity:0.01;top:-50%;left:-50%}
+.sym-divider{border:none;border-top:1px solid var(--border);margin:4px 0}
 </style>
 </head>
 <body>
@@ -2188,9 +2200,38 @@ body.placing-wp #placing-hint{display:block}
 
 <!-- Modal WP -->
 <div class="modal-backdrop" id="wp-modal">
-  <div class="modal">
-    <h3>📍 Nouveau waypoint</h3>
+  <div class="modal" style="max-height:92dvh;overflow-y:auto;width:320px">
+    <h3 id="wp-modal-title">📍 Nouveau waypoint</h3>
     <input type="text" id="wp-name-input" placeholder="Nom du waypoint…" maxlength="60">
+    <hr class="sym-divider">
+    <div class="sym-label">Catégorie</div>
+    <div class="sym-row" id="sym-cat-row">
+      <button class="sym-cat selected" data-cat="observation" data-color="#ff6d00" onclick="selectCat(this)">👁 Obs</button>
+      <button class="sym-cat" data-cat="faune" data-color="#4caf50" onclick="selectCat(this)">🦌 Faune</button>
+      <button class="sym-cat" data-cat="peche" data-color="#2196f3" onclick="selectCat(this)">🎣 Pêche</button>
+      <button class="sym-cat" data-cat="camping" data-color="#ffc107" onclick="selectCat(this)">⛺ Camp</button>
+      <button class="sym-cat" data-cat="danger" data-color="#e53935" onclick="selectCat(this)">⚠ Danger</button>
+      <button class="sym-cat" data-cat="infra" data-color="#9e9e9e" onclick="selectCat(this)">🔧 Infra</button>
+    </div>
+    <div class="sym-label" style="margin-top:8px">Forme</div>
+    <div class="sym-row" id="sym-shape-row">
+      <button class="sym-shape selected" data-shape="circle" onclick="selectShape(this)" title="Cercle"><svg width="22" height="22"><circle cx="11" cy="11" r="9" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="square" onclick="selectShape(this)" title="Carré"><svg width="22" height="22"><rect x="2" y="2" width="18" height="18" rx="2" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="triangle" onclick="selectShape(this)" title="Triangle"><svg width="22" height="22"><polygon points="11,2 20,20 2,20" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="diamond" onclick="selectShape(this)" title="Losange"><svg width="22" height="22"><polygon points="11,2 20,11 11,20 2,11" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="star" onclick="selectShape(this)" title="Étoile"><svg width="22" height="22"><polygon points="11,1 13.5,8 21,8 15,13 17.5,21 11,16 4.5,21 7,13 1,8 8.5,8" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="cross" onclick="selectShape(this)" title="Croix"><svg width="22" height="22"><path d="M9 2h4v7h7v4h-7v7H9v-7H2V9h7z" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="flag" onclick="selectShape(this)" title="Drapeau"><svg width="22" height="22"><rect x="4" y="15" width="2.5" height="6" fill="currentColor"/><path d="M6.5 2 L18 7 L6.5 12 Z" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="house" onclick="selectShape(this)" title="Maison"><svg width="22" height="22"><polygon points="11,2 20,9 20,20 14,20 14,14 8,14 8,20 2,20 2,9" fill="currentColor"/></svg></button>
+    </div>
+    <div class="sym-label" style="margin-top:8px">Couleur</div>
+    <div class="sym-color-wrap">
+      <div class="sym-color-swatch" id="sym-color-preview" style="background:#ff6d00">
+        <input type="color" id="sym-color-input" value="#ff6d00" oninput="onColorInput(this.value)">
+      </div>
+      <span id="sym-color-hex" style="font-size:11px;color:var(--muted);font-family:var(--font)">#ff6d00</span>
+    </div>
+    <hr class="sym-divider">
     <textarea id="wp-comment-input" placeholder="Commentaire (observation, note terrain…)" maxlength="500"></textarea>
     <div class="photo-grid" id="wp-photo-grid"></div>
     <button class="photo-add-btn" id="wp-photo-btn" onclick="triggerPhotoCapture()">📷 Ajouter une photo</button>
