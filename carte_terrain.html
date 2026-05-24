@@ -1699,10 +1699,10 @@
       map.getPanes().overlayPane.appendChild(this._canvas);
       this._offscreen = document.createElement('canvas');
 
-      map.on('move zoom',       this._transformReposition, this);
-      map.on('moveend zoomend', this._scheduleRender,      this);
+      map.on('move',            this._onMove,        this);
+      map.on('moveend zoomend', this._scheduleRender, this);
+      map.on('zoomanim',        this._onZoomAnim,     this);
 
-      // Différer tout le décodage APRÈS que Leaflet ait fini son initialisation
       var self = this;
       setTimeout(function() { self._loadTiff(); }, 0);
       return this;
@@ -1711,8 +1711,9 @@
     onRemove: function(map) {
       if (this._canvas && this._canvas.parentNode)
         this._canvas.parentNode.removeChild(this._canvas);
-      map.off('move zoom',       this._transformReposition, this);
-      map.off('moveend zoomend', this._scheduleRender,      this);
+      map.off('move',            this._onMove,        this);
+      map.off('moveend zoomend', this._scheduleRender, this);
+      map.off('zoomanim',        this._onZoomAnim,     this);
     },
 
     _loadTiff: function() {
@@ -1768,22 +1769,36 @@
       }
     },
 
-    _transformReposition: function() {
-		if (!this._canvas || !this._map || !this._bounds || !this._lastRenderTL) return;
-		// Sur iOS, pendant le pinch-zoom Leaflet anime via CSS — on ne touche à rien
-		if (this._map._animatingZoom) return;
-		var map = this._map;
-		var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
-		var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
-		var cw  = Math.abs(br.x - tl.x);
-		var ch  = Math.abs(br.y - tl.y);
-		var pw  = this._lastRenderPxW || cw;
-		var ph  = this._lastRenderPxH || ch;
-		this._canvas.style.transition = 'none';
-		this._canvas.style.transformOrigin = '0 0';
-		this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
-		L.DomUtil.setPosition(this._canvas, tl);
-	},
+    _onMove: function() {
+      if (!this._canvas || !this._map || !this._bounds || !this._lastRenderPxW) return;
+      if (this._map._animatingZoom) return;
+      var map = this._map;
+      var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
+      var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
+      var cw  = Math.abs(br.x - tl.x);
+      var ch  = Math.abs(br.y - tl.y);
+      this._canvas.style.transition      = 'none';
+      this._canvas.style.transformOrigin = '0 0';
+      this._canvas.style.transform = 'scale(' + (cw/this._lastRenderPxW) + ',' + (ch/this._lastRenderPxH) + ')';
+      L.DomUtil.setPosition(this._canvas, tl);
+    },
+
+    _onZoomAnim: function(e) {
+      if (!this._canvas || !this._map || !this._bounds) return;
+      var map    = this._map;
+      var zoom   = e.zoom;
+      var center = e.center;
+      var tl = map._latLngToNewLayerPoint(this._bounds.getNorthWest(), zoom, center);
+      var br = map._latLngToNewLayerPoint(this._bounds.getSouthEast(), zoom, center);
+      var cw = Math.abs(br.x - tl.x);
+      var ch = Math.abs(br.y - tl.y);
+      var pw = this._lastRenderPxW || cw;
+      var ph = this._lastRenderPxH || ch;
+      this._canvas.style.transition      = 'none';
+      this._canvas.style.transformOrigin = '0 0';
+      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+      L.DomUtil.setPosition(this._canvas, tl);
+    },
 
     _scheduleRender: function() {
       if (!this._srcCanvas) return;
