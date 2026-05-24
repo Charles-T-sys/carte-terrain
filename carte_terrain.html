@@ -1775,12 +1775,6 @@
 		if (this._map._animatingZoom) return;
 		var map = this._map;
 		var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
-		var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
-		var cw  = Math.abs(br.x - tl.x);
-		var ch  = Math.abs(br.y - tl.y);
-		this._canvas.style.transition      = 'none';
-		this._canvas.style.transformOrigin = '0 0';
-		this._canvas.style.transform = 'scale(' + (cw/this._lastRenderPxW) + ',' + (ch/this._lastRenderPxH) + ')';
 		L.DomUtil.setPosition(this._canvas, tl);
 	},
 
