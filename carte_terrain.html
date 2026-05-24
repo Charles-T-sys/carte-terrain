@@ -2642,7 +2642,6 @@ async function confirmWp() {
   addWpMarker(wp); renderWpList();
   document.getElementById('wp-modal').classList.remove('open');
   document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
-  closeCrosshair();
   toast(`${name} enregistré`);
 }
 function cancelWp() { document.getElementById('wp-modal').classList.remove('open'); state.pendingWpLatLng=null; closeCrosshair(); }
