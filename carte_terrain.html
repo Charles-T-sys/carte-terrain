@@ -1665,12 +1665,17 @@
   }
 
   function getBoundsFromTags(ifd) {
-    var tiepoint   = getTag(ifd, 33922);
-    var pixelScale = getTag(ifd, 33550);
-    if (!tiepoint || !pixelScale) {
-      console.warn('Tags GeoTIFF manquants. Dispo:', Object.keys(ifd).filter(function(k){return k.startsWith('t');}).join(', '));
-      return null;
-    }
+	console.log('IFD keys:', Object.keys(ifd).join(', '));
+	console.log('t33922:', getTag(ifd,33922));
+	console.log('t33550:', getTag(ifd,33550));
+	console.log('t34736:', getTag(ifd,34736));
+	console.log('t34737:', getTag(ifd,34737));
+	var tiepoint   = getTag(ifd, 33922);
+	var pixelScale = getTag(ifd, 33550);
+	if (!tiepoint || !pixelScale) {
+		console.warn('Tags GeoTIFF manquants. Dispo:', Object.keys(ifd).filter(function(k){return k.startsWith('t');}).join(', '));
+		return null;
+  	}
     var px=tiepoint[0], py=tiepoint[1], lon=tiepoint[3], lat=tiepoint[4];
     var sx=pixelScale[0], sy=pixelScale[1];
     var w=getTag(ifd,256)[0], h=getTag(ifd,257)[0];
