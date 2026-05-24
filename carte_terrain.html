@@ -1984,6 +1984,13 @@ body.measuring #measure-hint{display:block}
 #nav-banner-arrow{width:36px;height:36px;flex-shrink:0}
 #nav-banner-deg{font-size:11px;color:#7cb87c;min-width:36px;text-align:center}
 #nav-banner-stop{background:none;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:'Courier New',monospace;flex-shrink:0}
+#trace-banner{position:absolute;top:0;left:0;right:0;z-index:499;background:rgba(30,10,10,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:2px solid #ff3d00;display:none;align-items:center;padding:8px 12px;gap:10px;font-family:'Courier New',monospace}
+#trace-banner.active{display:flex}
+#trace-banner-dur{font-size:16px;font-weight:bold;color:#ffccbc;min-width:52px}
+#trace-banner-dist{font-size:16px;font-weight:bold;color:#ffccbc;min-width:64px}
+#trace-banner-spd{font-size:11px;color:#ff8a65;flex:1}
+#trace-banner-dot{width:10px;height:10px;border-radius:50%;background:#ff3d00;flex-shrink:0;animation:pulse-rec 1s infinite}
+@keyframes pulse-rec{0%,100%{opacity:1}50%{opacity:.2}}
 
 /* ── WAYPOINT PANEL ── */
 #wp-panel{position:absolute;bottom:36px;left:0;right:0;z-index:600;background:var(--panel);border-top:1px solid var(--border);padding:12px;transform:translateY(100%);transition:transform .25s ease;max-height:50dvh;overflow-y:auto;display:none}
@@ -2177,6 +2184,19 @@ body.placing-wp #placing-hint{display:block}
 		</div>
 		<div id="nav-banner-dist">—</div>
 		<button id="nav-banner-stop" onclick="stopNav()">✕ Stop</button>
+	</div>
+
+	<!-- BANNER TRACÉ -->
+	<div id="trace-banner">
+		<div id="trace-banner-dot"></div>
+		<div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">
+			<div style="display:flex;gap:12px;align-items:baseline">
+				<span id="trace-banner-dur">0:00</span>
+				<span id="trace-banner-dist">0 m</span>
+			</div>
+			<div id="trace-banner-spd">moy. — km/h</div>
+		</div>
+		<button onclick="toggleTrace()" style="background:none;border:1px solid #ff3d00;color:#ff3d00;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:'Courier New',monospace;flex-shrink:0">&#9632; Stop</button>
 	</div>
 
 	<!-- MIRE CENTRALE -->
@@ -2443,6 +2463,7 @@ const state = {
   measureMode: false, measurePts: [], measureLayers: [],
   placingWp: false, pendingWpLatLng: null, pendingWpPhotos: [],
   tracing: false, tracePts: [], traceLine: null, traces: [],
+  traceStartTime: null, traceTimer: null,
   heading: null,
   prevGPS: null,
   wpShape:'circle', wpColor:'#ff6d00', editingWpId:null,
@@ -3433,14 +3454,50 @@ async function exportKMZ(){openExportOpts();}
 // ══════════════════════════════════════════════════════
 function toggleTrace(){
   if(!state.tracing){
-    state.tracing=true;state.tracePts=[];
+    state.tracing=true;
+    state.tracePts=[];
+    state.traceStartTime=Date.now();
+    state.traceTimer=setInterval(updateTraceBanner,1000);
     state.traceLine=L.polyline([],{color:state.traceColor||'#ff3d00',weight:state.traceWeight||4,opacity:.9}).addTo(state.map);
     document.getElementById('btn-trace').classList.add('recording');
+    // Masquer nav-banner si actif, montrer trace-banner
+    document.getElementById('nav-banner').classList.remove('active');
+    document.getElementById('trace-banner').classList.add('active');
+    updateTraceBanner();
     toast('Tracé démarré');
   } else {
     state.tracing=false;
+    clearInterval(state.traceTimer);
+    state.traceTimer=null;
     document.getElementById('btn-trace').classList.remove('recording');
+    document.getElementById('trace-banner').classList.remove('active');
+    // Remettre nav-banner si navigation active
+    if(state.navTargetId) document.getElementById('nav-banner').classList.add('active');
     if(state.tracePts.length>1) saveTrace(); else toast('Tracé arrêté — pas assez de points');
+  }
+}
+function updateTraceBanner(){
+  if(!state.tracing) return;
+  // Durée
+  const elapsed=Math.floor((Date.now()-state.traceStartTime)/1000);
+  const mm=Math.floor(elapsed/60), ss=elapsed%60;
+  document.getElementById('trace-banner-dur').textContent=mm+':'+(ss<10?'0':'')+ss;
+  // Distance accumulée
+  const pts=state.tracePts;
+  var dist=0;
+  for(var i=1;i<pts.length;i++){
+    var R=6371000,toRad=function(x){return x*Math.PI/180;};
+    var dLat=toRad(pts[i].lat-pts[i-1].lat),dLon=toRad(pts[i].lon-pts[i-1].lon);
+    var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(pts[i-1].lat))*Math.cos(toRad(pts[i].lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+    dist+=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+  document.getElementById('trace-banner-dist').textContent=fmtDist(dist);
+  // Vitesse moyenne
+  if(elapsed>0 && dist>0){
+    var spdMoy=(dist/elapsed)*3.6;
+    document.getElementById('trace-banner-spd').textContent='moy. '+spdMoy.toFixed(1)+' km/h';
+  } else {
+    document.getElementById('trace-banner-spd').textContent='moy. — km/h';
   }
 }
 async function saveTrace(){
