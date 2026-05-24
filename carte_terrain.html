@@ -2045,7 +2045,25 @@ body.placing-wp #placing-hint{display:block}
 <body>
 
 <header>
-  <span class="app-title" id="header-title">🗺 Carte Terrain</span>
+  <div style="flex:1;display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 44" style="height:36px;width:auto;flex-shrink:0">
+      <ellipse cx="26" cy="22" rx="19" ry="12" fill="none" stroke="#3a3020" stroke-width="0.6"/>
+      <ellipse cx="26" cy="22" rx="13" ry="8" fill="none" stroke="#2e2818" stroke-width="0.5"/>
+      <path d="M26 4 C17 4 10 11 10 18 C10 27 26 38 26 38 C26 38 42 27 42 18 C42 11 35 4 26 4Z" fill="#2a2318" stroke="#8b7355" stroke-width="1.2"/>
+      <circle cx="26" cy="17" r="7" fill="#1e1a10" stroke="#6b5e3e" stroke-width="0.9"/>
+      <line x1="26" y1="10" x2="26" y2="13" stroke="#6b5e3e" stroke-width="1"/>
+      <line x1="26" y1="21" x2="26" y2="24" stroke="#6b5e3e" stroke-width="1"/>
+      <line x1="19" y1="17" x2="22" y2="17" stroke="#6b5e3e" stroke-width="1"/>
+      <line x1="30" y1="17" x2="33" y2="17" stroke="#6b5e3e" stroke-width="1"/>
+      <path d="M21 22 L21 12 L31 22 L31 12" fill="none" stroke="#c8b89a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="26" cy="17" r="2.2" fill="#8b1a1a"/>
+      <circle cx="26" cy="17" r="1.1" fill="#e05050"/>
+      <ellipse cx="26" cy="39" rx="7" ry="2" fill="#0a0805" opacity="0.4"/>
+      <text x="50" y="20" font-family="Courier New, monospace" font-size="14" font-weight="bold" letter-spacing="2" fill="#c8b89a">NAVENZA</text>
+      <text x="52" y="33" font-family="Courier New, monospace" font-size="9" letter-spacing="4" fill="#7a6e58">MAP</text>
+    </svg>
+    <span id="header-title" style="font-family:'Courier New',monospace;font-size:10px;color:#7a6e58;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px"></span>
+  </div>
   <div class="gps-pill" id="gps-pill">
     <div class="gps-dot"></div>
     <span id="gps-status">GPS…</span>
@@ -3070,31 +3088,122 @@ function exportGeoJSON() {
 //  EXPORT KMZ
 // ══════════════════════════════════════════════════════
 function escapeXml(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
-async function exportKMZ() {
-  if(!state.waypoints.length){toast('Aucun waypoint à exporter');return;}
-  if(typeof JSZip==='undefined'){toast('JSZip non chargé');return;}
-  toast('Génération KMZ…',3000);
-  const zip=new JSZip(), pf=zip.folder('photos');
-  const pmarks=state.waypoints.map(wp=>{
-    const photos = wp.photos || (wp.photo ? [wp.photo] : []);
-    const prs = photos.map((_,i)=>`photos/wp_${wp.id}_${i}.jpg`);
-    const desc=[];
-    if(wp.comment)desc.push(escapeXml(wp.comment));
-    prs.forEach(pr=>desc.push(`<img src="${pr}" style="max-width:300px">`));
-    return`  <Placemark><name>${escapeXml(wp.name)}</name>${desc.length?`<description><![CDATA[${desc.join('<br>')}]]></description>`:''}<TimeStamp><when>${wp.timestamp}</when></TimeStamp><styleUrl>#${prs.length?'wpP':'wpS'}</styleUrl><Point><coordinates>${wp.lon},${wp.lat},0</coordinates></Point></Placemark>`;
-  }).join('\n');
-  const kml=`<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Waypoints Terfa ${new Date().toISOString().slice(0,10)}</name><Style id="wpS"><IconStyle><color>ff0066ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style><Style id="wpP"><IconStyle><color>ff0033ff</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon></IconStyle></Style>\n${pmarks}\n</Document></kml>`;
-  zip.file('doc.kml',kml);
-  let pc=0;
-  for(const wp of state.waypoints){
-    const photos = wp.photos || (wp.photo ? [wp.photo] : []);
-    for(let i=0;i<photos.length;i++){try{const b=atob(photos[i].split(',')[1]);const by=new Uint8Array(b.length);for(let j=0;j<b.length;j++)by[j]=b.charCodeAt(j);pf.file(`wp_${wp.id}_${i}.jpg`,by,{binary:true});pc++;}catch(e){}}
-  }
-  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`terfa_wp_${new Date().toISOString().slice(0,10)}.kmz`;a.click();URL.revokeObjectURL(url);
-  toast(`KMZ — ${state.waypoints.length} WP${pc?` · ${pc} photo(s)`:''}`);
+
+function hexToKml(hex){const h=(hex||'#ff6d00').replace('#','');const r=h.slice(0,2),g=h.slice(2,4),b=h.slice(4,6);return 'ff'+b+g+r;}
+
+function compressDataUrl(dataUrl,quality){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{const c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').drawImage(img,0,0);res(c.toDataURL('image/jpeg',quality));};
+    img.src=dataUrl;
+  });
 }
+
+let _lastKmzBlobs=[],_exportPartsMode='auto';
+
+function openExportOpts(){
+  if(!state.waypoints.length&&!(state.traces&&state.traces.length)){toast('Aucune donnée à exporter');return;}
+  document.getElementById('btn-share-kmz').style.display='none';
+  document.getElementById('export-opts-modal').classList.add('open');
+}
+function closeExportOpts(){document.getElementById('export-opts-modal').classList.remove('open');}
+function selectParts(btn){
+  document.querySelectorAll('.export-part-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');_exportPartsMode=btn.dataset.parts;
+}
+
+async function runExportKMZ(){
+  if(typeof JSZip==='undefined'){toast('JSZip non chargé');return;}
+  const incWp=document.getElementById('kmz-inc-wp').checked;
+  const incTr=document.getElementById('kmz-inc-traces').checked;
+  const quality=parseInt(document.getElementById('kmz-quality').value)/100;
+  const now=new Date().toISOString().slice(0,10);
+  closeExportOpts();
+  toast('Génération KMZ…',5000);
+
+  const wpStyles=incWp?state.waypoints.map(wp=>'<Style id="wp_'+wp.id+'"><IconStyle><color>'+hexToKml(wp.color)+'</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>').join(''):'';
+  const trStyles=incTr&&state.traces?state.traces.map(tr=>'<Style id="tr_'+tr.id+'"><LineStyle><color>'+hexToKml(tr.color)+'</color><width>'+((tr.weight||4)*0.5).toFixed(1)+'</width></LineStyle></Style>').join(''):'';
+
+  let allPhotos=[];
+  let wpMarks='';
+  if(incWp){
+    for(const wp of state.waypoints){
+      const photos=wp.photos||(wp.photo?[wp.photo]:[]);
+      const compressed=[];
+      for(let i=0;i<photos.length;i++){
+        const c=await compressDataUrl(photos[i],quality);
+        compressed.push(c);allPhotos.push({wpId:wp.id,idx:i,dataUrl:c});
+      }
+      const prs=compressed.map((_,i)=>'photos/wp_'+wp.id+'_'+i+'.jpg');
+      const desc=[];
+      if(wp.comment)desc.push(escapeXml(wp.comment));
+      prs.forEach(pr=>desc.push('<img src="'+pr+'" style="max-width:300px">'));
+      wpMarks+='  <Placemark><name>'+escapeXml(wp.name)+'</name>'+(desc.length?'<description><![CDATA['+desc.join('<br>')+']]></description>':'')+'<TimeStamp><when>'+(wp.timestamp||now)+'</when></TimeStamp><styleUrl>#wp_'+wp.id+'</styleUrl><Point><coordinates>'+wp.lon+','+wp.lat+',0</coordinates></Point></Placemark>\n';
+    }
+  }
+
+  let trMarks='';
+  if(incTr&&state.traces){
+    for(const tr of state.traces){
+      if(!tr.points||tr.points.length<2)continue;
+      const coords=tr.points.map(p=>p.lon+','+p.lat+',0').join(' ');
+      trMarks+='  <Placemark><name>'+escapeXml(tr.name||'Tracé')+'</name><TimeStamp><when>'+(tr.timestamp||now)+'</when></TimeStamp><styleUrl>#tr_'+tr.id+'</styleUrl><LineString><tessellate>1</tessellate><coordinates>'+coords+'</coordinates></LineString></Placemark>\n';
+    }
+  }
+
+  const kmlBody='<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>'+escapeXml('Navenza Map — '+now)+'</name>\n'+wpStyles+trStyles+'\n'+wpMarks+trMarks+'</Document></kml>';
+  const totalBytes=new TextEncoder().encode(kmlBody).length+allPhotos.reduce((s,p)=>s+Math.round(p.dataUrl.length*0.75),0);
+  const MB15=15*1024*1024;
+  let nParts=1;
+  if(_exportPartsMode==='2')nParts=2;
+  else if(_exportPartsMode==='3')nParts=3;
+  else if(_exportPartsMode==='auto'&&totalBytes>MB15)nParts=totalBytes>MB15*2?3:2;
+
+  _lastKmzBlobs=[];
+  const fname='navenza_'+now;
+
+  async function buildZip(photoSubset){
+    const zip=new JSZip(),pf=zip.folder('photos');
+    zip.file('doc.kml',kmlBody);
+    for(const ph of photoSubset){
+      try{const b=atob(ph.dataUrl.split(',')[1]);const by=new Uint8Array(b.length);for(let j=0;j<b.length;j++)by[j]=b.charCodeAt(j);pf.file('wp_'+ph.wpId+'_'+ph.idx+'.jpg',by,{binary:true});}catch(e){}
+    }
+    return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+  }
+
+  if(nParts===1){
+    const blob=await buildZip(allPhotos);
+    _lastKmzBlobs=[{blob,name:fname+'.kmz'}];
+  } else {
+    const chunk=Math.ceil(allPhotos.length/nParts);
+    for(let i=0;i<nParts;i++){
+      const blob=await buildZip(allPhotos.slice(i*chunk,(i+1)*chunk));
+      _lastKmzBlobs.push({blob,name:fname+'_part'+(i+1)+'.kmz'});
+    }
+  }
+
+  for(const {blob,name} of _lastKmzBlobs){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=name;a.click();
+    URL.revokeObjectURL(url);
+    await new Promise(r=>setTimeout(r,400));
+  }
+
+  toast('KMZ — '+(totalBytes/1024/1024).toFixed(1)+' MB'+(nParts>1?' ('+nParts+' parties)':''));
+  document.getElementById('export-opts-modal').classList.add('open');
+  document.getElementById('btn-share-kmz').style.display='block';
+}
+
+async function shareLastKMZ(){
+  if(!_lastKmzBlobs.length){toast("Générer le KMZ d'abord");return;}
+  if(!navigator.share){toast('Partage non supporté — fichiers téléchargés');return;}
+  try{
+    const files=_lastKmzBlobs.map(({blob,name})=>new File([blob],name,{type:'application/vnd.google-earth.kmz'}));
+    await navigator.share({title:'Navenza Map — Export KMZ',text:'Export terrain — Réserve faunique Duchénier',files});
+  }catch(e){if(e.name!=='AbortError')toast('Erreur partage: '+e.message);}
+}
+
+async function exportKMZ(){openExportOpts();}
 
 // ══════════════════════════════════════════════════════
 //  TRACÉ GPX
