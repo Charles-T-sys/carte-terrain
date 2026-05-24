@@ -1948,6 +1948,10 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 .tool-sep{height:6px}
 .tool-btn.recording{border-color:var(--danger);color:var(--danger);animation:blink 1.5s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+/* ── MESURE ── */
+.measure-label{background:rgba(17,26,17,.88);border:1px solid var(--accent);color:var(--accent2);font-family:var(--font);font-size:10px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none}
+#measure-hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:600;background:rgba(76,175,80,.9);color:#000;font-size:12px;font-weight:bold;padding:6px 14px;border-radius:20px;display:none;font-family:var(--font);pointer-events:none}
+body.measuring #measure-hint{display:block}
 
 /* ── COORDS BAR ── */
 #coords-bar{position:absolute;bottom:0;left:0;right:0;z-index:500;background:rgba(17,26,17,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;align-items:center;padding:6px 12px;gap:14px;font-size:11px;color:var(--muted)}
@@ -2081,10 +2085,13 @@ body.placing-wp #placing-hint{display:block}
 	<button class="tool-btn warn" id="btn-wp" title="Ajouter waypoint (clic carte)" onclick="toggleWpMode()">📍</button>
     <button class="tool-btn" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
     <div class="tool-sep"></div>
+    <button class="tool-btn" id="btn-measure" title="Mesure de distance" onclick="toggleMeasure()">📐</button>
+    <div class="tool-sep"></div>
     <button class="tool-btn" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
     <button class="tool-btn" title="Exporter KMZ" onclick="exportKMZ()">🗂</button>
   </div>
   <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
+  <div id="measure-hint">📐 Tap = point · Double-tap = terminer</div>
 
   <!-- MIRE CENTRALE -->
   <div id="crosshair">
@@ -2243,6 +2250,7 @@ const state = {
   wpCounter: 1,
   gpsWatchId: null,
   crosshairMode: false,
+  measureMode: false, measurePts: [], measureLayers: [],
   placingWp: false, pendingWpLatLng: null, pendingWpPhotos: [],
   tracing: false, tracePts: [], traceLine: null,
   heading: null,
@@ -2491,6 +2499,7 @@ function initMap(arrayBuffer) {
   });
   state.cogLayer.addTo(state.map);
   state.map.on('click', onMapClick);
+  state.map.on('dblclick', e => { if (state.measureMode) { e.originalEvent.preventDefault(); clearMeasure(); } });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2540,6 +2549,81 @@ function zoomOut() { state.map?.zoomOut(); }
 //  WAYPOINTS
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
+//  MESURE DE DISTANCE
+// ══════════════════════════════════════════════════════
+function haversine(a, b) {
+  const R = 6371000, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+}
+function fmtDist(m) {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(2)} km`;
+}
+function toggleMeasure() {
+  if (state.measureMode) { clearMeasure(); return; }
+  state.measureMode = true;
+  document.getElementById('btn-measure').classList.add('active');
+  document.body.classList.add('measuring');
+  if (state.placingWp) toggleWpMode();
+  if (state.crosshairMode) toggleCrosshair();
+  toast('Mesure — tap pour ajouter des points, double-tap pour terminer');
+}
+function clearMeasure() {
+  state.measureMode = false;
+  state.measurePts = [];
+  state.measureLayers.forEach(l => state.map.removeLayer(l));
+  state.measureLayers = [];
+  document.getElementById('btn-measure').classList.remove('active');
+  document.body.classList.remove('measuring');
+  restoreCoordsBar();
+}
+function restoreCoordsBar() {
+  document.querySelector('.coords-bar-label').textContent = 'LAT';
+  document.querySelectorAll('.coords-bar-label')[1].textContent = 'LON';
+  document.querySelectorAll('.coords-bar-label')[2].textContent = '±';
+  if (state.currentPos) {
+    document.getElementById('disp-lat').textContent = fmt(state.currentPos.lat);
+    document.getElementById('disp-lon').textContent = fmt(state.currentPos.lon);
+    document.getElementById('disp-acc').textContent = `${Math.round(state.accuracy)}m`;
+  }
+}
+function updateMeasureBar() {
+  const pts = state.measurePts;
+  const total = pts.reduce((sum,_,i) => i===0 ? 0 : sum + haversine(pts[i-1], pts[i]), 0);
+  document.querySelector('.coords-bar-label').textContent = '📐';
+  document.querySelectorAll('.coords-bar-label')[1].textContent = '';
+  document.querySelectorAll('.coords-bar-label')[2].textContent = '';
+  document.getElementById('disp-lat').textContent = fmtDist(total);
+  document.getElementById('disp-lon').textContent = `${pts.length} pt${pts.length>1?'s':''}`;
+  document.getElementById('disp-acc').textContent = '';
+}
+function onMeasureClick(e) {
+  if (!state.measureMode) return;
+  const pts = state.measurePts;
+  pts.push(e.latlng);
+  const dot = L.circleMarker(e.latlng, {
+    radius:5, color:'#4caf50', fillColor:'#4caf50', fillOpacity:1, weight:2
+  }).addTo(state.map);
+  state.measureLayers.push(dot);
+  if (pts.length > 1) {
+    const prev = pts[pts.length-2], curr = pts[pts.length-1];
+    const dist = haversine(prev, curr);
+    const seg = L.polyline([prev, curr], {
+      color:'#4caf50', weight:2, opacity:.9, dashArray:'6 4'
+    }).addTo(state.map);
+    state.measureLayers.push(seg);
+    const mid = L.latLng((prev.lat+curr.lat)/2, (prev.lng+curr.lng)/2);
+    const lbl = L.marker(mid, {
+      icon: L.divIcon({ className:'measure-label', html:fmtDist(dist), iconAnchor:[0,10] }),
+      interactive:false
+    }).addTo(state.map);
+    state.measureLayers.push(lbl);
+  }
+  updateMeasureBar();
+}
+
+// ══════════════════════════════════════════════════════
 //  MIRE + WAYPOINTS
 // ══════════════════════════════════════════════════════
 function toggleCrosshair() {
@@ -2585,6 +2669,7 @@ function toggleWpMode() {
 }
 
 function onMapClick(e) {
+  if (state.measureMode) { onMeasureClick(e); return; }
   if (!state.placingWp) return;
   state.pendingWpLatLng = e.latlng;
   openWpModal(e.latlng);
@@ -2593,8 +2678,6 @@ function onMapClick(e) {
   document.getElementById('btn-wp').classList.remove('active');
 }
 
-// onMapClick conservé mais sans comportement waypoint
-function onMapClick(e) { /* réservé pour usage futur */ }
 function openWpModal(latlng) {
   document.getElementById('wp-modal').classList.add('open');
   document.getElementById('wp-name-input').value = `WP-${state.wpCounter}`;
@@ -2802,7 +2885,7 @@ dz.addEventListener('drop',async e=>{
 });
 dz.addEventListener('click',()=>document.getElementById('file-cog').click());
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){cancelWp();closeConfirm();closeCrosshair();state.placingWp=false;document.body.classList.remove('placing-wp');document.getElementById('btn-wp').classList.remove('active');}
+  if(e.key==='Escape'){cancelWp();closeConfirm();closeCrosshair();clearMeasure();state.placingWp=false;document.body.classList.remove('placing-wp');document.getElementById('btn-wp').classList.remove('active');}
   if(e.key==='+'||e.key==='=') zoomIn();
   if(e.key==='-') zoomOut();
 });
