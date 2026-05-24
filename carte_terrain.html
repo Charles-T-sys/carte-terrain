@@ -2183,6 +2183,8 @@ body.placing-wp #placing-hint{display:block}
     <span class="coords-bar-label">LAT</span><span class="coord-val" id="disp-lat">—</span>
     <span class="coords-bar-label">LON</span><span class="coord-val" id="disp-lon">—</span>
     <span class="coords-bar-label">±</span><span class="acc-val" id="disp-acc">—</span>
+    <span class="coords-bar-label" id="lbl-spd" style="display:none">km/h</span><span class="coord-val" id="disp-spd" style="display:none">—</span>
+    <span class="coords-bar-label" id="lbl-hdg" style="display:none">°</span><span class="coord-val" id="disp-hdg" style="display:none">—</span>
     <span style="margin-left:auto;color:var(--muted);font-size:10px" id="disp-wpts">0 WP</span>
   </div>
 </div>
@@ -2423,6 +2425,7 @@ const state = {
   placingWp: false, pendingWpLatLng: null, pendingWpPhotos: [],
   tracing: false, tracePts: [], traceLine: null, traces: [],
   heading: null,
+  prevGPS: null,
   wpShape:'circle', wpColor:'#ff6d00', editingWpId:null,
   traceColor:'#ff3d00', traceWeight:4, movingWpId:null,
 };
@@ -2699,13 +2702,74 @@ function startGPS() {
     { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
 }
 function onGPS(pos) {
-  const { latitude:lat, longitude:lon, accuracy:acc } = pos.coords;
+  const { latitude:lat, longitude:lon, accuracy:acc, speed:rawSpd, heading:rawHdg } = pos.coords;
+  const now = pos.timestamp;
+
+  // --- Calcul vitesse + cap ---
+  let spd = null, hdg = null;
+
+  // Vitesse native (m/s → km/h), disponible sur la plupart des appareils
+  if (rawSpd !== null && rawSpd >= 0) {
+    spd = rawSpd * 3.6;
+  }
+
+  // Cap natif
+  if (rawHdg !== null && rawHdg >= 0) {
+    hdg = rawHdg;
+  }
+
+  // Fallback Haversine si vitesse/cap natifs absents
+  if (state.prevGPS && (spd === null || hdg === null)) {
+    const prev = state.prevGPS;
+    const dt = (now - prev.t) / 1000; // secondes
+    if (dt > 0.5) {
+      const R = 6371000;
+      const dLat = (lat - prev.lat) * Math.PI / 180;
+      const dLon = (lon - prev.lon) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(prev.lat*Math.PI/180)*Math.cos(lat*Math.PI/180)*Math.sin(dLon/2)**2;
+      const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      if (spd === null) spd = (dist / dt) * 3.6;
+      if (hdg === null) {
+        const y = Math.sin(dLon)*Math.cos(lat*Math.PI/180);
+        const x = Math.cos(prev.lat*Math.PI/180)*Math.sin(lat*Math.PI/180) - Math.sin(prev.lat*Math.PI/180)*Math.cos(lat*Math.PI/180)*Math.cos(dLon);
+        hdg = (Math.atan2(y,x)*180/Math.PI + 360) % 360;
+      }
+    }
+  }
+  state.prevGPS = { lat, lon, t: now };
+
   state.currentPos = { lat, lon }; state.accuracy = acc;
   document.getElementById('gps-pill').className = 'gps-pill active';
-  document.getElementById('gps-status').textContent = `±${Math.round(acc)}m`;
-  document.getElementById('disp-lat').textContent = fmt(lat);
-  document.getElementById('disp-lon').textContent = fmt(lon);
-  document.getElementById('disp-acc').textContent = `${Math.round(acc)}m`;
+  document.getElementById('gps-status').textContent = '\u00b1' + Math.round(acc) + 'm';
+
+  if (!state.measureMode) {
+    document.getElementById('disp-lat').textContent = fmt(lat);
+    document.getElementById('disp-lon').textContent = fmt(lon);
+    document.getElementById('disp-acc').textContent = Math.round(acc) + 'm';
+
+    // Vitesse + cap
+    const spdEl = document.getElementById('disp-spd');
+    const hdgEl = document.getElementById('disp-hdg');
+    const lblSpd = document.getElementById('lbl-spd');
+    const lblHdg = document.getElementById('lbl-hdg');
+    if (spd !== null && spd > 0.3) {
+      spdEl.textContent = spd.toFixed(1);
+      spdEl.style.display = '';
+      lblSpd.style.display = '';
+    } else {
+      spdEl.style.display = 'none';
+      lblSpd.style.display = 'none';
+    }
+    if (hdg !== null && spd !== null && spd > 0.3) {
+      hdgEl.textContent = Math.round(hdg) + '\u00b0';
+      hdgEl.style.display = '';
+      lblHdg.style.display = '';
+    } else {
+      hdgEl.style.display = 'none';
+      lblHdg.style.display = 'none';
+    }
+  }
+
   updatePosMarker(lat, lon, acc);
   if (state.tracing) { state.tracePts.push({ lat, lon, t: new Date().toISOString() }); state.traceLine.addLatLng([lat,lon]); }
 }
