@@ -1693,28 +1693,29 @@
     },
 
     onAdd: function(map) {
-      this._map = map;
-      this._canvas = document.createElement('canvas');
-      this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-      map.getPanes().overlayPane.appendChild(this._canvas);
-      this._offscreen = document.createElement('canvas');
+		this._map = map;
+		this._canvas = document.createElement('canvas');
+		this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+		// Dans mapPane au lieu d'overlayPane — évite le double transform pendant le zoom iOS
+		map.getPanes().mapPane.appendChild(this._canvas);
+		this._offscreen = document.createElement('canvas');
 
-      map.on('move',            this._onMove,        this);
-      map.on('moveend zoomend', this._scheduleRender, this);
-      map.on('zoomanim',        this._onZoomAnim,     this);
+		map.on('move',            this._onMove,        this);
+		map.on('moveend zoomend', this._scheduleRender, this);
+		map.on('zoomanim',        this._onZoomAnim,     this);
 
-      var self = this;
-      setTimeout(function() { self._loadTiff(); }, 0);
-      return this;
-    },
+		var self = this;
+		setTimeout(function() { self._loadTiff(); }, 0);
+		return this;
+	},
 
-    onRemove: function(map) {
-      if (this._canvas && this._canvas.parentNode)
-        this._canvas.parentNode.removeChild(this._canvas);
-      map.off('move',            this._onMove,        this);
-      map.off('moveend zoomend', this._scheduleRender, this);
-      map.off('zoomanim',        this._onZoomAnim,     this);
-    },
+		onRemove: function(map) {
+		if (this._canvas && this._canvas.parentNode)
+			this._canvas.parentNode.removeChild(this._canvas);
+		map.off('move',            this._onMove,        this);
+		map.off('moveend zoomend', this._scheduleRender, this);
+		map.off('zoomanim',        this._onZoomAnim,     this);
+	},
 
     _loadTiff: function() {
       var self = this;
