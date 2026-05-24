@@ -2575,6 +2575,7 @@ function clearMeasure() {
   state.measurePts = [];
   state.measureLayers.forEach(l => state.map.removeLayer(l));
   state.measureLayers = [];
+  if (state._elasticLine) { state.map.removeLayer(state._elasticLine); state._elasticLine = null; }
   document.getElementById('btn-measure').classList.remove('active');
   document.body.classList.remove('measuring');
   if (state.crosshairMode) toggleCrosshair(); // éteindre la mire
@@ -2583,8 +2584,8 @@ function clearMeasure() {
 }
 function undoMeasure() {
   if (!state.measureMode || !state.measurePts.length) return;
+  if (state._elasticLine) { state.map.removeLayer(state._elasticLine); state._elasticLine = null; }
   state.measurePts.pop();
-  // Retirer les layers du dernier point : dot + segment + label = 3 layers (sauf premier point = 1)
   const toRemove = state.measurePts.length === 0 ? 1 : 3;
   for (let i = 0; i < toRemove; i++) {
     const l = state.measureLayers.pop();
@@ -2634,8 +2635,9 @@ function onMeasureClick(e) {
       interactive:false
     }).addTo(state.map);
     state.measureLayers.push(lbl);
-	document.getElementById('btn-measure-undo').style.display = 'flex';
+	  document.getElementById('btn-measure-undo').style.display = 'flex';
   }
+  if (state._elasticLine) { state.map.removeLayer(state._elasticLine); state._elasticLine = null; }
   updateMeasureBar();
 }
 
@@ -2673,8 +2675,32 @@ function closeCrosshair() {
 function updateCrosshairCoords() {
   if (!state.crosshairMode || !state.map) return;
   const c = state.map.getCenter();
-  document.getElementById('crosshair-coords').textContent =
-    `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+  if (state.measureMode && state.measurePts.length > 0) {
+    const last = state.measurePts[state.measurePts.length-1];
+    const segDist = haversine(last, c);
+    const total = state.measurePts.reduce((sum,_,i) => i===0 ? 0 : sum + haversine(state.measurePts[i-1], state.measurePts[i]), 0);
+    document.getElementById('crosshair-coords').textContent =
+      `seg: ${fmtDist(segDist)} · tot: ${fmtDist(total + segDist)}`;
+    document.querySelector('.coords-bar-label').textContent = '📐';
+    document.querySelectorAll('.coords-bar-label')[1].textContent = '';
+    document.querySelectorAll('.coords-bar-label')[2].textContent = '';
+    document.getElementById('disp-lat').textContent = fmtDist(total + segDist);
+    document.getElementById('disp-lon').textContent = `${state.measurePts.length} pt${state.measurePts.length>1?'s':''}`;
+    document.getElementById('disp-acc').textContent = '';
+    // Ligne élastique
+    if (!state._elasticLine) {
+      state._elasticLine = L.polyline([last, c], {
+        color:'#4caf50', weight:1.5, opacity:.7, dashArray:'4 6'
+      }).addTo(state.map);
+    } else {
+      state._elasticLine.setLatLngs([last, c]);
+    }
+  } else if (state.measureMode) {
+    document.getElementById('crosshair-coords').textContent = '— premier point —';
+  } else {
+    document.getElementById('crosshair-coords').textContent =
+      `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+  }
 }
 function toggleWpMode() {
   if (state.crosshairMode) {
