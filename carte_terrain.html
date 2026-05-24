@@ -1769,19 +1769,21 @@
     },
 
     _transformReposition: function() {
-      if (!this._canvas || !this._map || !this._bounds || !this._lastRenderTL) return;
-      var map = this._map;
-      var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
-      var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
-      var cw  = Math.abs(br.x - tl.x);
-      var ch  = Math.abs(br.y - tl.y);
-      var pw  = this._lastRenderPxW || cw;
-      var ph  = this._lastRenderPxH || ch;
-      this._canvas.style.transition = 'none';
-      this._canvas.style.transformOrigin = '0 0';
-      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
-      L.DomUtil.setPosition(this._canvas, tl);
-    },
+		if (!this._canvas || !this._map || !this._bounds || !this._lastRenderTL) return;
+		// Sur iOS, pendant le pinch-zoom Leaflet anime via CSS — on ne touche à rien
+		if (this._map._animatingZoom) return;
+		var map = this._map;
+		var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
+		var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
+		var cw  = Math.abs(br.x - tl.x);
+		var ch  = Math.abs(br.y - tl.y);
+		var pw  = this._lastRenderPxW || cw;
+		var ph  = this._lastRenderPxH || ch;
+		this._canvas.style.transition = 'none';
+		this._canvas.style.transformOrigin = '0 0';
+		this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
+		L.DomUtil.setPosition(this._canvas, tl);
+	},
 
     _scheduleRender: function() {
       if (!this._srcCanvas) return;
