@@ -1771,35 +1771,20 @@
     },
 
     _onMove: function() {
-      if (!this._canvas || !this._map || !this._bounds || !this._lastRenderPxW) return;
-      if (this._map._animatingZoom) return;
-      var map = this._map;
-      var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
-      var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
-      var cw  = Math.abs(br.x - tl.x);
-      var ch  = Math.abs(br.y - tl.y);
-      this._canvas.style.transition      = 'none';
-      this._canvas.style.transformOrigin = '0 0';
-      this._canvas.style.transform = 'scale(' + (cw/this._lastRenderPxW) + ',' + (ch/this._lastRenderPxH) + ')';
-      L.DomUtil.setPosition(this._canvas, tl);
-    },
+		if (!this._canvas || !this._map || !this._bounds || !this._lastRenderPxW) return;
+		if (this._map._animatingZoom) return;
+		var map = this._map;
+		var tl  = map.latLngToLayerPoint(this._bounds.getNorthWest());
+		var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
+		var cw  = Math.abs(br.x - tl.x);
+		var ch  = Math.abs(br.y - tl.y);
+		this._canvas.style.transition      = 'none';
+		this._canvas.style.transformOrigin = '0 0';
+		this._canvas.style.transform = 'scale(' + (cw/this._lastRenderPxW) + ',' + (ch/this._lastRenderPxH) + ')';
+		L.DomUtil.setPosition(this._canvas, tl);
+	},
 
-    _onZoomAnim: function(e) {
-      if (!this._canvas || !this._map || !this._bounds) return;
-      var map    = this._map;
-      var zoom   = e.zoom;
-      var center = e.center;
-      var tl = map._latLngToNewLayerPoint(this._bounds.getNorthWest(), zoom, center);
-      var br = map._latLngToNewLayerPoint(this._bounds.getSouthEast(), zoom, center);
-      var cw = Math.abs(br.x - tl.x);
-      var ch = Math.abs(br.y - tl.y);
-      var pw = this._lastRenderPxW || cw;
-      var ph = this._lastRenderPxH || ch;
-      this._canvas.style.transition      = 'none';
-      this._canvas.style.transformOrigin = '0 0';
-      this._canvas.style.transform = 'scale(' + (cw/pw) + ',' + (ch/ph) + ')';
-      L.DomUtil.setPosition(this._canvas, tl);
-    },
+    _onZoomAnim: function() {},
 
     _scheduleRender: function() {
       if (!this._srcCanvas) return;
