@@ -2025,7 +2025,25 @@ body.placing-wp #placing-hint{display:block}
 <body>
 
 <header>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 44" style="height:38px;width:auto;flex:1">  <ellipse cx="26" cy="22" rx="19" ry="12" fill="none" stroke="#3a3020" stroke-width="0.6"/>  <ellipse cx="26" cy="22" rx="13" ry="8" fill="none" stroke="#2e2818" stroke-width="0.5"/>  <path d="M26 4 C17 4 10 11 10 18 C10 27 26 38 26 38 C26 38 42 27 42 18 C42 11 35 4 26 4Z" fill="#2a2318" stroke="#8b7355" stroke-width="1.2"/>  <circle cx="26" cy="17" r="7" fill="#1e1a10" stroke="#6b5e3e" stroke-width="0.9"/>  <line x1="26" y1="10" x2="26" y2="13" stroke="#6b5e3e" stroke-width="1"/>  <line x1="26" y1="21" x2="26" y2="24" stroke="#6b5e3e" stroke-width="1"/>  <line x1="19" y1="17" x2="22" y2="17" stroke="#6b5e3e" stroke-width="1"/>  <line x1="30" y1="17" x2="33" y2="17" stroke="#6b5e3e" stroke-width="1"/>  <path d="M21 22 L21 12 L31 22 L31 12" fill="none" stroke="#c8b89a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>  <circle cx="26" cy="17" r="2.2" fill="#8b1a1a"/>  <circle cx="26" cy="17" r="1.1" fill="#e05050"/>  <ellipse cx="26" cy="39" rx="7" ry="2" fill="#0a0805" opacity="0.4"/>  <text x="50" y="20" font-family="Courier New, monospace" font-size="14" font-weight="bold" letter-spacing="2" fill="#c8b89a">NAVENZA</text>  <text x="52" y="33" font-family="Courier New, monospace" font-size="9" letter-spacing="4" fill="#7a6e58">MAP</text></svg>
+<div style="flex:1;display:flex;align-items:center;gap:8px;min-width:0">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 44" style="height:36px;width:auto;flex-shrink:0">
+    <ellipse cx="26" cy="22" rx="19" ry="12" fill="none" stroke="#3a3020" stroke-width="0.6"/>
+    <ellipse cx="26" cy="22" rx="13" ry="8" fill="none" stroke="#2e2818" stroke-width="0.5"/>
+    <path d="M26 4 C17 4 10 11 10 18 C10 27 26 38 26 38 C26 38 42 27 42 18 C42 11 35 4 26 4Z" fill="#2a2318" stroke="#8b7355" stroke-width="1.2"/>
+    <circle cx="26" cy="17" r="7" fill="#1e1a10" stroke="#6b5e3e" stroke-width="0.9"/>
+    <line x1="26" y1="10" x2="26" y2="13" stroke="#6b5e3e" stroke-width="1"/>
+    <line x1="26" y1="21" x2="26" y2="24" stroke="#6b5e3e" stroke-width="1"/>
+    <line x1="19" y1="17" x2="22" y2="17" stroke="#6b5e3e" stroke-width="1"/>
+    <line x1="30" y1="17" x2="33" y2="17" stroke="#6b5e3e" stroke-width="1"/>
+    <path d="M21 22 L21 12 L31 22 L31 12" fill="none" stroke="#c8b89a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="26" cy="17" r="2.2" fill="#8b1a1a"/>
+    <circle cx="26" cy="17" r="1.1" fill="#e05050"/>
+    <ellipse cx="26" cy="39" rx="7" ry="2" fill="#0a0805" opacity="0.4"/>
+    <text x="50" y="20" font-family="Courier New, monospace" font-size="14" font-weight="bold" letter-spacing="2" fill="#c8b89a">NAVENZA</text>
+    <text x="52" y="33" font-family="Courier New, monospace" font-size="9" letter-spacing="4" fill="#7a6e58">MAP</text>
+  </svg>
+  <span id="header-title" style="font-family:'Courier New',monospace;font-size:11px;color:#7a6e58;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px"></span>
+</div>
   <div class="gps-pill" id="gps-pill">
     <div class="gps-dot"></div>
     <span id="gps-status">GPS…</span>
