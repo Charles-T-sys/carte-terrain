@@ -1941,7 +1941,8 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 
 /* ── TOOLBAR ── */
 /* ── TOOLBAR DROITE ── */
-#toolbar{position:absolute;right:8px;top:8px;z-index:500;display:flex;flex-direction:column;gap:5px}
+#toolbar{position:absolute;right:8px;top:8px;z-index:500;display:flex;flex-direction:column;gap:5px;transition:top .2s ease}
+#toolbar.banner-active{top:68px}
 .tool-btn{width:48px;height:48px;border-radius:8px;border:1px solid var(--border);background:rgba(28,43,28,.92);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.5);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0}
 .tool-btn:active{transform:scale(.88);background:var(--border)}
 .tool-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(76,175,80,.15)}
@@ -3164,12 +3165,14 @@ function startNav(id){
   state.navTargetId=id;
   document.getElementById('nav-banner-name').textContent='\u27a4 '+wp.name;
   document.getElementById('nav-banner').classList.add('active');
+  if(!state.tracing) document.getElementById('toolbar').classList.add('banner-active');
   updateNavBanner();
   toast('Navigation \u2192 '+wp.name);
 }
 function stopNav(){
   state.navTargetId=null;
   document.getElementById('nav-banner').classList.remove('active');
+  if(!state.tracing) document.getElementById('toolbar').classList.remove('banner-active');
 }
 function updateNavBanner(){
   if(!state.navTargetId)return;
@@ -3463,6 +3466,7 @@ function toggleTrace(){
     // Masquer nav-banner si actif, montrer trace-banner
     document.getElementById('nav-banner').classList.remove('active');
     document.getElementById('trace-banner').classList.add('active');
+    document.getElementById('toolbar').classList.add('banner-active');
     updateTraceBanner();
     toast('Tracé démarré');
   } else {
@@ -3471,8 +3475,11 @@ function toggleTrace(){
     state.traceTimer=null;
     document.getElementById('btn-trace').classList.remove('recording');
     document.getElementById('trace-banner').classList.remove('active');
-    // Remettre nav-banner si navigation active
-    if(state.navTargetId) document.getElementById('nav-banner').classList.add('active');
+    if(state.navTargetId){
+      document.getElementById('nav-banner').classList.add('active');
+    } else {
+      document.getElementById('toolbar').classList.remove('banner-active');
+    }
     if(state.tracePts.length>1) saveTrace(); else toast('Tracé arrêté — pas assez de points');
   }
 }
