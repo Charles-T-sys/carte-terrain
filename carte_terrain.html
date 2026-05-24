@@ -1940,13 +1940,16 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 .heading-marker{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:22px solid #2196f3;position:absolute;top:-24px;left:50%;transform:translateX(-50%);transform-origin:bottom center;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
 
 /* ── TOOLBAR ── */
-#toolbar{position:absolute;right:10px;top:10px;z-index:500;display:flex;flex-direction:column;gap:6px}
-.tool-btn{width:40px;height:40px;border-radius:var(--r);border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);box-shadow:0 2px 8px rgba(0,0,0,.4)}
-.tool-btn:active{transform:scale(.93);background:var(--border)}
-.tool-btn.active{border-color:var(--accent);color:var(--accent)}
+#toolbar{position:absolute;right:10px;top:10px;z-index:500;display:flex;flex-direction:column;gap:4px}
+.tool-btn{width:52px;height:52px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.5);-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.tool-btn:active{transform:scale(.90);background:var(--border)}
+.tool-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(76,175,80,.12)}
 .tool-btn.warn{border-color:var(--warn);color:var(--warn)}
-.tool-sep{height:6px}
+.tool-btn.primary-action{width:56px;height:56px;font-size:24px;border-color:var(--warn);color:var(--warn);background:rgba(255,143,0,.10)}
+.tool-sep{height:4px}
 .tool-btn.recording{border-color:var(--danger);color:var(--danger);animation:blink 1.5s infinite}
+.wp-item-edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 8px;border-radius:3px}
+.wp-item-edit:active{color:var(--accent)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 /* ── MESURE ── */
 .measure-label{background:rgba(17,26,17,.88);border:1px solid var(--accent);color:var(--accent2);font-family:var(--font);font-size:10px;padding:2px 6px;border-radius:3px;white-space:nowrap;pointer-events:none}
@@ -2015,20 +2018,21 @@ body.placing-wp #placing-hint{display:block}
 /* ── SYMBOLOGIE WP ── */
 .sym-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .sym-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
-.sym-shape{width:36px;height:36px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s;flex-shrink:0}
+.sym-shape{width:36px;height:36px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .15s;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .sym-shape:active{transform:scale(.92)}
 .sym-shape.selected{border-color:var(--accent);background:rgba(76,175,80,.15)}
 .sym-shape svg{pointer-events:none}
-.sym-cat{padding:5px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.sym-cat{padding:6px 10px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .sym-cat:active{transform:scale(.94)}
 .sym-cat.selected{border-color:var(--accent);color:var(--text)}
 .sym-color-wrap{display:flex;align-items:center;gap:8px}
-.sym-color-swatch{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;overflow:hidden;padding:0}
-.sym-color-swatch input[type=color]{width:48px;height:48px;border:none;background:none;cursor:pointer;margin:-8px}
+.sym-color-swatch{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);cursor:pointer;flex-shrink:0;overflow:hidden;padding:0;display:flex;align-items:center;justify-content:center}
+.sym-color-swatch input[type=color]{width:52px;height:52px;border:none;background:none;cursor:pointer;margin:-8px;opacity:0.01;position:absolute}
+.sym-color-swatch{position:relative}
 .sym-divider{border:none;border-top:1px solid var(--border);margin:4px 0}
 /* ── SYMBOLOGIE TRACÉ ── */
-.trace-opt-row{display:flex;gap:6px;align-items:center}
-.trace-width-btn{width:40px;height:32px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.trace-opt-row{display:flex;gap:8px;align-items:center}
+.trace-width-btn{width:48px;height:36px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .trace-width-btn.selected{border-color:var(--accent);background:rgba(76,175,80,.15)}
 
 /* ── TOAST ── */
@@ -2092,23 +2096,23 @@ body.placing-wp #placing-hint{display:block}
 <div id="map-wrap">
   <div id="map"></div>
   <div id="toolbar">
-    <button class="tool-btn" title="Retour aux projets" onclick="goHome()">⌂</button>
+    <button class="tool-btn" title="Retour aux projets" onclick="goHome()" style="font-size:20px">⌂</button>
     <div class="tool-sep"></div>
-    <button class="tool-btn active" id="btn-gps" title="Centrer sur ma position" onclick="centerOnPos()">◎</button>
-    <button class="tool-btn" id="btn-compass" title="Activer boussole" onclick="requestCompass()">🧭</button>
-    <button class="tool-btn" id="btn-trace" title="Tracé on/off" onclick="toggleTrace()">⏺</button>
+    <button class="tool-btn active" id="btn-gps" title="Centrer GPS" onclick="centerOnPos()">◎</button>
+    <button class="tool-btn" id="btn-compass" title="Boussole" onclick="requestCompass()">🧭</button>
     <div class="tool-sep"></div>
-    <button class="tool-btn" onclick="zoomIn()">＋</button>
-    <button class="tool-btn" onclick="zoomOut()">－</button>
+    <button class="tool-btn" onclick="zoomIn()" style="font-size:26px;font-weight:300">＋</button>
+    <button class="tool-btn" onclick="zoomOut()" style="font-size:26px;font-weight:300">－</button>
     <div class="tool-sep"></div>
+    <button class="tool-btn primary-action" id="btn-wp" title="Ajouter waypoint" onclick="toggleWpMode()">📍</button>
     <button class="tool-btn" id="btn-crosshair" title="Mire on/off" onclick="toggleCrosshair()">⊕</button>
-	<button class="tool-btn warn" id="btn-wp" title="Ajouter waypoint (clic carte)" onclick="toggleWpMode()">📍</button>
     <button class="tool-btn" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
     <div class="tool-sep"></div>
-    <button class="tool-btn" id="btn-measure" title="Mesure de distance" onclick="toggleMeasure()">📐</button>
-    <button class="tool-btn" id="btn-measure-undo" title="Annuler dernier point" onclick="undoMeasure()" style="display:none">↩</button>
-	<div class="tool-sep"></div>
-    <button class="tool-btn" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
+    <button class="tool-btn" id="btn-trace" title="Tracé on/off" onclick="toggleTrace()">⏺</button>
+    <button class="tool-btn" id="btn-measure" title="Mesure distance" onclick="toggleMeasure()">📐</button>
+    <button class="tool-btn" id="btn-measure-undo" title="Annuler point" onclick="undoMeasure()" style="display:none">↩</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" title="Exporter GeoJSON" onclick="exportGeoJSON()" style="font-size:14px;letter-spacing:-1px">GJ</button>
     <button class="tool-btn" title="Exporter KMZ" onclick="exportKMZ()">🗂</button>
   </div>
   <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
@@ -2155,12 +2159,10 @@ body.placing-wp #placing-hint{display:block}
   <div class="modal" style="max-height:92dvh;overflow-y:auto;width:320px">
     <h3 id="wp-modal-title">📍 Nouveau waypoint</h3>
     <input type="text" id="wp-name-input" placeholder="Nom du waypoint…" maxlength="60">
-
-    <!-- SYMBOLOGIE -->
     <hr class="sym-divider">
     <div class="sym-label">Catégorie</div>
     <div class="sym-row" id="sym-cat-row">
-      <button class="sym-cat selected" data-cat="observation" data-color="#ff6d00" onclick="selectCat(this)">👁 Observation</button>
+      <button class="sym-cat selected" data-cat="observation" data-color="#ff6d00" onclick="selectCat(this)">👁 Obs</button>
       <button class="sym-cat" data-cat="faune" data-color="#4caf50" onclick="selectCat(this)">🦌 Faune</button>
       <button class="sym-cat" data-cat="peche" data-color="#2196f3" onclick="selectCat(this)">🎣 Pêche</button>
       <button class="sym-cat" data-cat="camping" data-color="#ffc107" onclick="selectCat(this)">⛺ Camp</button>
@@ -2169,30 +2171,14 @@ body.placing-wp #placing-hint{display:block}
     </div>
     <div class="sym-label" style="margin-top:8px">Forme</div>
     <div class="sym-row" id="sym-shape-row">
-      <button class="sym-shape selected" data-shape="circle" onclick="selectShape(this)" title="Cercle">
-        <svg width="20" height="20"><circle cx="10" cy="10" r="8" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="square" onclick="selectShape(this)" title="Carré">
-        <svg width="20" height="20"><rect x="2" y="2" width="16" height="16" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="triangle" onclick="selectShape(this)" title="Triangle">
-        <svg width="20" height="20"><polygon points="10,2 18,18 2,18" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="diamond" onclick="selectShape(this)" title="Losange">
-        <svg width="20" height="20"><polygon points="10,2 18,10 10,18 2,10" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="star" onclick="selectShape(this)" title="Étoile">
-        <svg width="20" height="20"><polygon points="10,1 12.9,7 19.5,7.6 14.8,12 16.5,18.5 10,15 3.5,18.5 5.2,12 0.5,7.6 7.1,7" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="cross" onclick="selectShape(this)" title="Croix">
-        <svg width="20" height="20"><path d="M8 2h4v6h6v4h-6v6h-4v-6H2V8h6z" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="flag" onclick="selectShape(this)" title="Drapeau">
-        <svg width="20" height="20"><rect x="4" y="16" width="2" height="3" fill="currentColor"/><path d="M6 2 L16 6 L6 10 Z" fill="currentColor"/></svg>
-      </button>
-      <button class="sym-shape" data-shape="house" onclick="selectShape(this)" title="Maison">
-        <svg width="20" height="20"><polygon points="10,2 18,9 18,18 12,18 12,13 8,13 8,18 2,18 2,9" fill="currentColor"/></svg>
-      </button>
+      <button class="sym-shape selected" data-shape="circle" onclick="selectShape(this)" title="Cercle"><svg width="22" height="22"><circle cx="11" cy="11" r="9" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="square" onclick="selectShape(this)" title="Carré"><svg width="22" height="22"><rect x="2" y="2" width="18" height="18" rx="2" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="triangle" onclick="selectShape(this)" title="Triangle"><svg width="22" height="22"><polygon points="11,2 20,20 2,20" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="diamond" onclick="selectShape(this)" title="Losange"><svg width="22" height="22"><polygon points="11,2 20,11 11,20 2,11" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="star" onclick="selectShape(this)" title="Étoile"><svg width="22" height="22"><polygon points="11,1 13.5,8 21,8 15,13 17.5,21 11,16 4.5,21 7,13 1,8 8.5,8" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="cross" onclick="selectShape(this)" title="Croix"><svg width="22" height="22"><path d="M9 2h4v7h7v4h-7v7H9v-7H2V9h7z" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="flag" onclick="selectShape(this)" title="Drapeau"><svg width="22" height="22"><rect x="4" y="15" width="2.5" height="6" fill="currentColor"/><path d="M6.5 2 L18 7 L6.5 12 Z" fill="currentColor"/></svg></button>
+      <button class="sym-shape" data-shape="house" onclick="selectShape(this)" title="Maison"><svg width="22" height="22"><polygon points="11,2 20,9 20,20 14,20 14,14 8,14 8,20 2,20 2,9" fill="currentColor"/></svg></button>
     </div>
     <div class="sym-label" style="margin-top:8px">Couleur</div>
     <div class="sym-color-wrap">
@@ -2202,7 +2188,6 @@ body.placing-wp #placing-hint{display:block}
       <span id="sym-color-hex" style="font-size:11px;color:var(--muted);font-family:var(--font)">#ff6d00</span>
     </div>
     <hr class="sym-divider">
-
     <textarea id="wp-comment-input" placeholder="Commentaire (observation, note terrain…)" maxlength="500"></textarea>
     <div class="photo-grid" id="wp-photo-grid"></div>
     <button class="photo-add-btn" id="wp-photo-btn" onclick="triggerPhotoCapture()">📷 Ajouter une photo</button>
@@ -2228,17 +2213,11 @@ body.placing-wp #placing-hint{display:block}
     </div>
     <div class="sym-label" style="margin-top:8px">Épaisseur</div>
     <div class="trace-opt-row" id="trace-width-row">
-      <button class="trace-width-btn" data-w="2" onclick="selectTraceWidth(this)" title="Fin">
-        <svg width="36" height="12"><line x1="2" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="2"/></svg>
-      </button>
-      <button class="trace-width-btn selected" data-w="4" onclick="selectTraceWidth(this)" title="Normal">
-        <svg width="36" height="12"><line x1="2" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="4"/></svg>
-      </button>
-      <button class="trace-width-btn" data-w="7" onclick="selectTraceWidth(this)" title="Épais">
-        <svg width="36" height="12"><line x1="2" y1="6" x2="34" y2="6" stroke="currentColor" stroke-width="7"/></svg>
-      </button>
+      <button class="trace-width-btn" data-w="2" onclick="selectTraceWidth(this)" title="Fin"><svg width="44" height="14"><line x1="3" y1="7" x2="41" y2="7" stroke="currentColor" stroke-width="2"/></svg></button>
+      <button class="trace-width-btn selected" data-w="4" onclick="selectTraceWidth(this)" title="Normal"><svg width="44" height="14"><line x1="3" y1="7" x2="41" y2="7" stroke="currentColor" stroke-width="4"/></svg></button>
+      <button class="trace-width-btn" data-w="7" onclick="selectTraceWidth(this)" title="Épais"><svg width="44" height="14"><line x1="3" y1="7" x2="41" y2="7" stroke="currentColor" stroke-width="7"/></svg></button>
     </div>
-    <div class="modal-actions" style="margin-top:8px">
+    <div class="modal-actions" style="margin-top:10px">
       <button class="btn" onclick="cancelTraceSym()">Annuler</button>
       <button class="btn primary" onclick="confirmTraceSym()">Démarrer</button>
     </div>
@@ -2352,8 +2331,8 @@ const state = {
   measureMode: false, measurePts: [], measureLayers: [],
   placingWp: false, pendingWpLatLng: null, pendingWpPhotos: [],
   tracing: false, tracePts: [], traceLine: null,
-  wpShape: 'circle', wpColor: '#ff6d00',
-  traceColor: '#ff3d00', traceWeight: 4,
+  wpShape:'circle', wpColor:'#ff6d00', editingWpId:null,
+  traceColor:'#ff3d00', traceWeight:4,
   heading: null,
 };
 
@@ -2841,7 +2820,17 @@ function onMapClick(e) {
   document.getElementById('btn-wp').classList.remove('active');
 }
 
-
+function openWpModal(latlng){
+  state.editingWpId=null;
+  resetSymUI();
+  document.getElementById('wp-modal-title').textContent='📍 Nouveau waypoint';
+  document.getElementById('wp-name-input').value=`WP-${state.wpCounter}`;
+  document.getElementById('wp-comment-input').value='';
+  document.getElementById('wp-modal-coords').textContent=`Lat: ${fmt(latlng.lat)}  Lon: ${fmt(latlng.lng)}`;
+  state.pendingWpPhotos=[]; renderPhotoGrid();
+  document.getElementById('wp-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('wp-name-input').select(),100);
+}
 function renderPhotoGrid() {
   const grid = document.getElementById('wp-photo-grid');
   const btn  = document.getElementById('wp-photo-btn');
@@ -2880,36 +2869,78 @@ document.getElementById('wp-photo-input').addEventListener('change', e => {
 async function confirmWp() {
   const name    = document.getElementById('wp-name-input').value.trim() || `WP-${state.wpCounter}`;
   const comment = document.getElementById('wp-comment-input').value.trim();
-  const latlng  = state.pendingWpLatLng; if (!latlng) return;
-  const wp = { id:Date.now(), projectId:state.currentProjectId, name, comment, photos:state.pendingWpPhotos.slice(), lat:latlng.lat, lon:latlng.lng, timestamp:new Date().toISOString(), shape:state.wpShape, color:state.wpColor };
-  state.waypoints.push(wp); state.wpCounter++; state.pendingWpPhotos = [];
-  await dbPut('waypoints', wp);
-  await syncProjectMeta();
+  if(state.editingWpId) {
+    const idx=state.waypoints.findIndex(w=>w.id===state.editingWpId);
+    if(idx===-1){state.editingWpId=null;return;}
+    const wp=state.waypoints[idx];
+    wp.name=name; wp.comment=comment; wp.photos=state.pendingWpPhotos.slice();
+    wp.shape=state.wpShape; wp.color=state.wpColor;
+    await dbPut('waypoints',wp);
+    const mi=state.wpMarkers.findIndex(m=>m.id===wp.id);
+    if(mi!==-1){state.map.removeLayer(state.wpMarkers[mi].marker);state.wpMarkers.splice(mi,1);}
+    addWpMarker(wp); renderWpList();
+    state.editingWpId=null;
+    document.getElementById('wp-modal').classList.remove('open');
+    toast(`${name} modifié`);
+    return;
+  }
+  const latlng=state.pendingWpLatLng; if(!latlng) return;
+  const wp={id:Date.now(),projectId:state.currentProjectId,name,comment,photos:state.pendingWpPhotos.slice(),lat:latlng.lat,lon:latlng.lng,timestamp:new Date().toISOString(),shape:state.wpShape,color:state.wpColor};
+  state.waypoints.push(wp); state.wpCounter++; state.pendingWpPhotos=[];
+  await dbPut('waypoints',wp); await syncProjectMeta();
   addWpMarker(wp); renderWpList();
   document.getElementById('wp-modal').classList.remove('open');
-  document.getElementById('disp-wpts').textContent = `${state.waypoints.length} WP`;
+  document.getElementById('disp-wpts').textContent=`${state.waypoints.length} WP`;
   toast(`${name} enregistré`);
 }
-function selectCat(btn) {
+function cancelWp() { document.getElementById('wp-modal').classList.remove('open'); state.pendingWpLatLng=null; state.editingWpId=null; closeCrosshair(); }
+function wpShapeSvg(shape,color){
+  const c=color||'#ff6d00';
+  const s={
+    circle:`<circle cx="12" cy="12" r="10" fill="${c}" stroke="white" stroke-width="2"/>`,
+    square:`<rect x="2" y="2" width="20" height="20" rx="2" fill="${c}" stroke="white" stroke-width="2"/>`,
+    triangle:`<polygon points="12,2 22,22 2,22" fill="${c}" stroke="white" stroke-width="2"/>`,
+    diamond:`<polygon points="12,2 22,12 12,22 2,12" fill="${c}" stroke="white" stroke-width="2"/>`,
+    star:`<polygon points="12,1 14.9,8.5 22.5,8.5 16.8,13.5 19,21 12,16.5 5,21 7.2,13.5 1.5,8.5 9.1,8.5" fill="${c}" stroke="white" stroke-width="1.5"/>`,
+    cross:`<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="${c}" stroke="white" stroke-width="1.5"/>`,
+    flag:`<rect x="5" y="16" width="2.5" height="7" fill="${c}" stroke="white" stroke-width="1"/><path d="M7.5 2 L20 7 L7.5 13 Z" fill="${c}" stroke="white" stroke-width="1.5"/>`,
+    house:`<polygon points="12,2 22,10 22,22 15,22 15,15 9,15 9,22 2,22 2,10" fill="${c}" stroke="white" stroke-width="2"/>`
+  };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${s[shape]||s.circle}</svg>`;
+}
+function addWpMarker(wp) {
+  if (!state.map) return;
+  const shape=wp.shape||'circle', color=wp.color||'#ff6d00';
+  const svgHtml=wpShapeSvg(shape,color);
+  const icon = L.divIcon({ className:'', html:`<div class="wp-icon" style="width:24px;height:30px">${svgHtml}<div class="wp-label">${wp.name}</div></div>`, iconSize:[24,30], iconAnchor:[12,30] });
+  const marker = L.marker([wp.lat,wp.lon], { icon }).addTo(state.map);
+  const photos = wp.photos || (wp.photo ? [wp.photo] : []); // compat anciens WP
+  let html = photos.map(p=>`<img class="wp-popup-img" src="${p}" alt="">`).join('');
+  html += `<b>${wp.name}</b><br><span style="font-size:10px;color:#666">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
+  if (wp.comment) html += `<br><span style="font-size:11px;color:#444;display:block;margin-top:3px">${wp.comment}</span>`;
+  marker.bindPopup(html, { maxWidth:220 });
+  state.wpMarkers.push({ id:wp.id, marker });
+}
+function selectCat(btn){
   document.querySelectorAll('#sym-cat-row .sym-cat').forEach(b=>b.classList.remove('selected'));
   btn.classList.add('selected');
-  const color = btn.dataset.color;
-  state.wpColor = color;
-  document.getElementById('sym-color-input').value = color;
-  document.getElementById('sym-color-preview').style.background = color;
-  document.getElementById('sym-color-hex').textContent = color;
+  const color=btn.dataset.color;
+  state.wpColor=color;
+  document.getElementById('sym-color-input').value=color;
+  document.getElementById('sym-color-preview').style.background=color;
+  document.getElementById('sym-color-hex').textContent=color;
 }
-function selectShape(btn) {
+function selectShape(btn){
   document.querySelectorAll('#sym-shape-row .sym-shape').forEach(b=>b.classList.remove('selected'));
   btn.classList.add('selected');
-  state.wpShape = btn.dataset.shape;
+  state.wpShape=btn.dataset.shape;
 }
-function onColorInput(val) {
-  state.wpColor = val;
-  document.getElementById('sym-color-preview').style.background = val;
-  document.getElementById('sym-color-hex').textContent = val;
+function onColorInput(val){
+  state.wpColor=val;
+  document.getElementById('sym-color-preview').style.background=val;
+  document.getElementById('sym-color-hex').textContent=val;
 }
-function resetSymUI() {
+function resetSymUI(){
   document.querySelectorAll('#sym-cat-row .sym-cat').forEach(b=>b.classList.remove('selected'));
   document.querySelector('#sym-cat-row .sym-cat[data-cat="observation"]').classList.add('selected');
   document.querySelectorAll('#sym-shape-row .sym-shape').forEach(b=>b.classList.remove('selected'));
@@ -2919,43 +2950,24 @@ function resetSymUI() {
   document.getElementById('sym-color-preview').style.background='#ff6d00';
   document.getElementById('sym-color-hex').textContent='#ff6d00';
 }
-function openWpModal(latlng) {
-  resetSymUI();
-  document.getElementById('wp-modal-title').textContent = '📍 Nouveau waypoint';
-  document.getElementById('wp-name-input').value = '';
-  document.getElementById('wp-comment-input').value = '';
-  state.pendingWpPhotos = []; renderPhotoGrid();
-  document.getElementById('wp-modal-coords').textContent = `Lat: ${fmt(latlng.lat)}  Lon: ${fmt(latlng.lng)}`;
+function editWp(id){
+  const wp=state.waypoints.find(w=>w.id===id); if(!wp) return;
+  state.editingWpId=id;
+  document.getElementById('wp-modal-title').textContent='✎ Modifier waypoint';
+  document.getElementById('wp-name-input').value=wp.name;
+  document.getElementById('wp-comment-input').value=wp.comment||'';
+  state.pendingWpPhotos=(wp.photos||[]).slice(); renderPhotoGrid();
+  document.getElementById('wp-modal-coords').textContent=`Lat: ${fmt(wp.lat)}  Lon: ${fmt(wp.lon)}`;
+  const shape=wp.shape||'circle', color=wp.color||'#ff6d00';
+  document.querySelectorAll('#sym-shape-row .sym-shape').forEach(b=>b.classList.remove('selected'));
+  const sb=document.querySelector(`#sym-shape-row .sym-shape[data-shape="${shape}"]`);
+  if(sb) sb.classList.add('selected');
+  document.querySelectorAll('#sym-cat-row .sym-cat').forEach(b=>b.classList.remove('selected'));
+  state.wpShape=shape; state.wpColor=color;
+  document.getElementById('sym-color-input').value=color;
+  document.getElementById('sym-color-preview').style.background=color;
+  document.getElementById('sym-color-hex').textContent=color;
   document.getElementById('wp-modal').classList.add('open');
-}
-function cancelWp() { document.getElementById('wp-modal').classList.remove('open'); state.pendingWpLatLng=null; closeCrosshair(); }
-function wpShapeSvg(shape, color) {
-  const c = color || '#ff6d00';
-  const s = {
-    circle:   `<circle cx="12" cy="12" r="10" fill="${c}" stroke="white" stroke-width="2"/>`,
-    square:   `<rect x="2" y="2" width="20" height="20" rx="2" fill="${c}" stroke="white" stroke-width="2"/>`,
-    triangle: `<polygon points="12,2 22,22 2,22" fill="${c}" stroke="white" stroke-width="2"/>`,
-    diamond:  `<polygon points="12,2 22,12 12,22 2,12" fill="${c}" stroke="white" stroke-width="2"/>`,
-    star:     `<polygon points="12,1 14.9,8.5 22.5,8.5 16.8,13.5 19,21 12,16.5 5,21 7.2,13.5 1.5,8.5 9.1,8.5" fill="${c}" stroke="white" stroke-width="1.5"/>`,
-    cross:    `<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="${c}" stroke="white" stroke-width="1.5"/>`,
-    flag:     `<rect x="5" y="16" width="3" height="7" fill="${c}" stroke="white" stroke-width="1"/><path d="M8 2 L20 7 L8 13 Z" fill="${c}" stroke="white" stroke-width="1.5"/>`,
-    house:    `<polygon points="12,2 22,10 22,22 15,22 15,15 9,15 9,22 2,22 2,10" fill="${c}" stroke="white" stroke-width="2"/>`
-  };
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${s[shape]||s.circle}</svg>`;
-}
-function addWpMarker(wp) {
-  if (!state.map) return;
-  const shape = wp.shape || 'circle';
-  const color = wp.color || '#ff6d00';
-  const svgHtml = wpShapeSvg(shape, color);
-  const icon = L.divIcon({ className:'', html:`<div class="wp-icon" style="width:24px;height:30px">${svgHtml}<div class="wp-label">${wp.name}</div></div>`, iconSize:[24,30], iconAnchor:[12,30] });
-  const marker = L.marker([wp.lat,wp.lon], { icon }).addTo(state.map);
-  const photos = wp.photos || (wp.photo ? [wp.photo] : []); // compat anciens WP
-  let html = photos.map(p=>`<img class="wp-popup-img" src="${p}" alt="">`).join('');
-  html += `<b>${wp.name}</b><br><span style="font-size:10px;color:#666">${fmt(wp.lat)}, ${fmt(wp.lon)}</span>`;
-  if (wp.comment) html += `<br><span style="font-size:11px;color:#444;display:block;margin-top:3px">${wp.comment}</span>`;
-  marker.bindPopup(html, { maxWidth:220 });
-  state.wpMarkers.push({ id:wp.id, marker });
 }
 async function deleteWp(id) {
   const idx=state.waypoints.findIndex(w=>w.id===id); if(idx===-1) return;
@@ -2967,17 +2979,23 @@ async function deleteWp(id) {
   document.getElementById('disp-wpts').textContent=`${state.waypoints.length} WP`;
   toast('Waypoint supprimé');
 }
+function wpThumb(wp){
+  const p=wp.photos||(wp.photo?[wp.photo]:[]);
+  if(p.length) return `<img class="wp-thumb" src="${p[0]}" alt="">`;
+  return `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${wpShapeSvg(wp.shape||'circle',wp.color||'#ff6d00')}</div>`;
+}
 function renderWpList() {
   const list=document.getElementById('wp-list');
   if(!state.waypoints.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun waypoint</div>';return;}
   list.innerHTML=state.waypoints.map(wp=>`
     <div class="wp-item">
-      ${(()=>{const p=wp.photos||(wp.photo?[wp.photo]:[]);return p.length?`<img class="wp-thumb" src="${p[0]}" alt="">`:'<span class="wp-item-icon">📍</span>';})()}
+      ${wpThumb(wp)}
       <div style="flex:1;min-width:0">
         <div class="wp-item-name">${wp.name}</div>
         <div class="wp-item-coords">${fmt(wp.lat)}, ${fmt(wp.lon)}</div>
         ${wp.comment?`<div class="wp-item-comment">${wp.comment}</div>`:''}
       </div>
+      <button class="wp-item-edit" onclick="editWp(${wp.id})" title="Éditer">✎</button>
       <button class="wp-item-del" onclick="deleteWp(${wp.id})">✕</button>
     </div>`).join('');
 }
@@ -2992,7 +3010,7 @@ function toggleWpPanel() {
 // ══════════════════════════════════════════════════════
 function exportGeoJSON() {
   if(!state.waypoints.length){toast('Aucun waypoint à exporter');return;}
-  const gj={type:'FeatureCollection',features:state.waypoints.map(wp=>({type:'Feature',geometry:{type:'Point',coordinates:[wp.lon,wp.lat]},properties:{name:wp.name,comment:wp.comment||'',photo_count:(wp.photos||[]).length,timestamp:wp.timestamp,id:wp.id}}))};
+  const gj={type:'FeatureCollection',features:state.waypoints.map(wp=>({type:'Feature',geometry:{type:'Point',coordinates:[wp.lon,wp.lat]},properties:{name:wp.name,comment:wp.comment||'',photo_count:(wp.photos||[]).length,timestamp:wp.timestamp,id:wp.id,shape:wp.shape||'circle',color:wp.color||'#ff6d00'}}))};
   const url=URL.createObjectURL(new Blob([JSON.stringify(gj,null,2)],{type:'application/json'}));
   const a=document.createElement('a');a.href=url;a.download=`waypoints_${new Date().toISOString().slice(0,10)}.geojson`;a.click();URL.revokeObjectURL(url);
   toast(`${state.waypoints.length} WP exportés en GeoJSON`);
@@ -3031,7 +3049,7 @@ async function exportKMZ() {
 // ══════════════════════════════════════════════════════
 //  TRACÉ GPX
 // ══════════════════════════════════════════════════════
-function toggleTrace() {
+function toggleTrace(){
   if(!state.tracing){
     document.getElementById('trace-sym-modal').classList.add('open');
   } else {
@@ -3040,20 +3058,10 @@ function toggleTrace() {
     if(state.tracePts.length>1) exportGPX(); else toast('Tracé arrêté — pas assez de points');
   }
 }
-function onTraceColorInput(val) {
-  state.traceColor = val;
-  document.getElementById('trace-color-preview').style.background = val;
-  document.getElementById('trace-color-hex').textContent = val;
-}
-function selectTraceWidth(btn) {
-  document.querySelectorAll('#trace-width-row .trace-width-btn').forEach(b=>b.classList.remove('selected'));
-  btn.classList.add('selected');
-  state.traceWeight = parseInt(btn.dataset.w);
-}
-function cancelTraceSym() {
-  document.getElementById('trace-sym-modal').classList.remove('open');
-}
-function confirmTraceSym() {
+function onTraceColorInput(val){state.traceColor=val;document.getElementById('trace-color-preview').style.background=val;document.getElementById('trace-color-hex').textContent=val;}
+function selectTraceWidth(btn){document.querySelectorAll('#trace-width-row .trace-width-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');state.traceWeight=parseInt(btn.dataset.w);}
+function cancelTraceSym(){document.getElementById('trace-sym-modal').classList.remove('open');}
+function confirmTraceSym(){
   document.getElementById('trace-sym-modal').classList.remove('open');
   state.tracing=true; state.tracePts=[];
   state.traceLine=L.polyline([],{color:state.traceColor,weight:state.traceWeight,opacity:.9}).addTo(state.map);
