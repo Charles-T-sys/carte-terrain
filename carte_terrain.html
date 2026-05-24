@@ -2040,6 +2040,8 @@ body.placing-wp #placing-hint{display:block}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.export-part-btn{flex:1;padding:8px 4px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--font);font-size:11px;cursor:pointer;touch-action:manipulation;transition:all .15s}
+.export-part-btn.selected{border-color:var(--accent);color:var(--accent);background:rgba(76,175,80,.1)}
 </style>
 </head>
 <body>
@@ -2231,7 +2233,41 @@ body.placing-wp #placing-hint{display:block}
   </div>
 </div>
 
-<!-- Modal confirmation -->
+<!-- Modal options export KMZ -->
+<div class="modal-backdrop" id="export-opts-modal">
+  <div class="modal" style="width:310px">
+    <h3>🗂 Export KMZ</h3>
+    <div class="sym-label">Contenu</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="kmz-inc-wp" checked style="accent-color:var(--accent);width:16px;height:16px"> Waypoints + photos
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="kmz-inc-traces" checked style="accent-color:var(--accent);width:16px;height:16px"> Tracés
+      </label>
+    </div>
+    <div class="sym-label" style="margin-top:4px">Qualité photos</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:10px;color:var(--muted);width:28px">Min</span>
+      <input type="range" id="kmz-quality" min="20" max="90" value="60" step="5" style="flex:1;accent-color:var(--accent)" oninput="document.getElementById('kmz-quality-val').textContent=this.value+'%'">
+      <span style="font-size:10px;color:var(--muted);width:28px">Max</span>
+      <span id="kmz-quality-val" style="font-size:11px;color:var(--accent);width:32px;text-align:right">60%</span>
+    </div>
+    <div class="sym-label" style="margin-top:4px">Scission si &gt;15 MB</div>
+    <div style="display:flex;gap:6px">
+      <button class="export-part-btn selected" id="part-auto" data-parts="auto" onclick="selectParts(this)">Auto</button>
+      <button class="export-part-btn" id="part-2" data-parts="2" onclick="selectParts(this)">2 parties</button>
+      <button class="export-part-btn" id="part-3" data-parts="3" onclick="selectParts(this)">3 parties</button>
+    </div>
+    <div class="modal-actions" style="margin-top:4px">
+      <button class="btn" onclick="closeExportOpts()">Annuler</button>
+      <button class="btn primary" onclick="runExportKMZ()">Générer</button>
+    </div>
+    <button onclick="shareLastKMZ()" id="btn-share-kmz" style="display:none;width:100%;padding:9px;border-radius:var(--r);border:1px solid var(--accent);background:rgba(76,175,80,.1);color:var(--accent);font-family:var(--font);font-size:12px;cursor:pointer;touch-action:manipulation;margin-top:4px">
+      📤 Partager / Envoyer par courriel
+    </button>
+  </div>
+</div>
 <div class="modal-backdrop" id="confirm-modal">
   <div class="confirm-modal">
     <h3>🗑 Supprimer le projet ?</h3>
