@@ -2086,7 +2086,8 @@ body.placing-wp #placing-hint{display:block}
     <button class="tool-btn" title="Liste waypoints" onclick="toggleWpPanel()">≡</button>
     <div class="tool-sep"></div>
     <button class="tool-btn" id="btn-measure" title="Mesure de distance" onclick="toggleMeasure()">📐</button>
-    <div class="tool-sep"></div>
+    <button class="tool-btn" id="btn-measure-undo" title="Annuler dernier point" onclick="undoMeasure()" style="display:none">↩</button>
+	<div class="tool-sep"></div>
     <button class="tool-btn" title="Exporter GeoJSON" onclick="exportGeoJSON()">⬇</button>
     <button class="tool-btn" title="Exporter KMZ" onclick="exportKMZ()">🗂</button>
   </div>
@@ -2566,8 +2567,8 @@ function toggleMeasure() {
   document.getElementById('btn-measure').classList.add('active');
   document.body.classList.add('measuring');
   if (state.placingWp) toggleWpMode();
-  if (state.crosshairMode) toggleCrosshair();
-  toast('Mesure — tap pour ajouter des points, double-tap pour terminer');
+  if (!state.crosshairMode) toggleCrosshair(); // activer la mire
+  toast('Mesure — mire pour ajouter des points, double-tap pour terminer');
 }
 function clearMeasure() {
   state.measureMode = false;
@@ -2576,7 +2577,21 @@ function clearMeasure() {
   state.measureLayers = [];
   document.getElementById('btn-measure').classList.remove('active');
   document.body.classList.remove('measuring');
+  if (state.crosshairMode) toggleCrosshair(); // éteindre la mire
   restoreCoordsBar();
+  document.getElementById('btn-measure-undo').style.display = 'none';
+}
+function undoMeasure() {
+  if (!state.measureMode || !state.measurePts.length) return;
+  state.measurePts.pop();
+  // Retirer les layers du dernier point : dot + segment + label = 3 layers (sauf premier point = 1)
+  const toRemove = state.measurePts.length === 0 ? 1 : 3;
+  for (let i = 0; i < toRemove; i++) {
+    const l = state.measureLayers.pop();
+    if (l) state.map.removeLayer(l);
+  }
+  if (state.measurePts.length === 0) restoreCoordsBar();
+  else updateMeasureBar();
 }
 function restoreCoordsBar() {
   document.querySelector('.coords-bar-label').textContent = 'LAT';
@@ -2619,6 +2634,7 @@ function onMeasureClick(e) {
       interactive:false
     }).addTo(state.map);
     state.measureLayers.push(lbl);
+	document.getElementById('btn-measure-undo').style.display = 'flex';
   }
   updateMeasureBar();
 }
@@ -2627,18 +2643,22 @@ function onMeasureClick(e) {
 //  MIRE + WAYPOINTS
 // ══════════════════════════════════════════════════════
 function toggleCrosshair() {
-  state.crosshairMode = !state.crosshairMode;
-  document.getElementById('crosshair').classList.toggle('active', state.crosshairMode);
-  document.getElementById('crosshair-coords').classList.toggle('active', state.crosshairMode);
-  document.getElementById('btn-crosshair').classList.toggle('active', state.crosshairMode);
-  if (state.crosshairMode) {
-    updateCrosshairCoords();
-    state.map && state.map.on('move', updateCrosshairCoords);
-    toast('Mire active');
+  if (!state.crosshairMode) {
+    // activer
+    ...
   } else {
-    state.map && state.map.off('move', updateCrosshairCoords);
+    if (state.measureMode) {
+      // mire en mode mesure → ajouter un point
+      onMeasureClick({ latlng: state.map.getCenter() });
+    } else {
+      // mire normale → déposer WP
+      const center = state.map.getCenter();
+      state.pendingWpLatLng = center;
+      openWpModal(center);
+    }
   }
 }
+
 function closeCrosshair() {
   if (!state.crosshairMode) return;
   state.crosshairMode = false;
@@ -2669,9 +2689,8 @@ function toggleWpMode() {
 }
 
 function onMapClick(e) {
-  if (state.measureMode) { onMeasureClick(e); return; }
+  if (state.measureMode) return; // mesure = mire uniquement
   if (!state.placingWp) return;
-  state.pendingWpLatLng = e.latlng;
   openWpModal(e.latlng);
   state.placingWp = false;
   document.body.classList.remove('placing-wp');
