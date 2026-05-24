@@ -2571,11 +2571,20 @@ function updateCrosshairCoords() {
     `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
 }
 function toggleWpMode() {
-  state.placingWp = !state.placingWp;
-  document.body.classList.toggle('placing-wp', state.placingWp);
-  document.getElementById('btn-wp').classList.toggle('active', state.placingWp);
-  if (state.placingWp) toast('Toucher la carte pour placer un waypoint');
+  if (state.crosshairMode) {
+    // Mire active → déposer directement au centre
+    const center = state.map.getCenter();
+    state.pendingWpLatLng = center;
+    openWpModal(center);
+  } else {
+    // Mire inactive → mode clic carte classique
+    state.placingWp = !state.placingWp;
+    document.body.classList.toggle('placing-wp', state.placingWp);
+    document.getElementById('btn-wp').classList.toggle('active', state.placingWp);
+    if (state.placingWp) toast('Toucher la carte pour placer un waypoint');
+  }
 }
+
 function onMapClick(e) {
   if (!state.placingWp) return;
   state.pendingWpLatLng = e.latlng;
