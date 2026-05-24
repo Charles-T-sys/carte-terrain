@@ -2500,7 +2500,15 @@ function initMap(arrayBuffer) {
   });
   state.cogLayer.addTo(state.map);
   state.map.on('click', onMapClick);
-  state.map.on('dblclick', e => { if (state.measureMode) { e.originalEvent.preventDefault(); clearMeasure(); } });
+  state.map.on('dblclick', e => { if (state.measureMode) { e.originalEvent && e.originalEvent.preventDefault(); clearMeasure(); } });
+  // Double-tap iOS — dblclick ne se déclenche pas sur Safari mobile
+  let _lastTap = 0;
+  state.map.on('click', () => {
+    if (!state.measureMode) return;
+    const now = Date.now();
+    if (now - _lastTap < 400) { clearMeasure(); }
+    _lastTap = now;
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2578,7 +2586,14 @@ function clearMeasure() {
   if (state._elasticLine) { state.map.removeLayer(state._elasticLine); state._elasticLine = null; }
   document.getElementById('btn-measure').classList.remove('active');
   document.body.classList.remove('measuring');
-  if (state.crosshairMode) toggleCrosshair(); // éteindre la mire
+  // Fermer la mire directement — ne pas passer par toggleCrosshair qui ouvrirait le modal WP
+  if (state.crosshairMode) {
+    state.crosshairMode = false;
+    document.getElementById('crosshair').classList.remove('active');
+    document.getElementById('crosshair-coords').classList.remove('active');
+    document.getElementById('btn-crosshair').classList.remove('active');
+    state.map && state.map.off('move', updateCrosshairCoords);
+  }
   restoreCoordsBar();
   document.getElementById('btn-measure-undo').style.display = 'none';
 }
