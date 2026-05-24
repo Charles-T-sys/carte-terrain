@@ -1976,7 +1976,7 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 body.measuring #measure-hint{display:block}
 
 /* ── COORDS BAR ── */
-#coords-bar{position:absolute;bottom:0;left:0;right:0;z-index:499;background:rgba(17,26,17,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;align-items:center;padding:6px 12px;gap:14px;font-size:11px;color:var(--muted)}
+#coords-bar{position:absolute;bottom:0;left:0;right:0;z-index:499;background:rgba(17,26,17,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;align-items:center;padding:4px 10px;gap:6px;font-size:11px;color:var(--muted);overflow:hidden}
 #nav-banner{position:absolute;top:0;left:0;right:0;z-index:498;background:rgba(10,30,10,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:2px solid #4caf50;display:none;align-items:center;padding:8px 12px;gap:10px;font-family:'Courier New',monospace}
 #nav-banner.active{display:flex}
 #nav-banner-name{font-size:11px;color:#7cb87c;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2197,12 +2197,14 @@ body.placing-wp #placing-hint{display:block}
   </div>
   <div id="crosshair-coords"></div>
   <div id="coords-bar">
-    <span class="coords-bar-label">LAT</span><span class="coord-val" id="disp-lat">—</span>
-    <span class="coords-bar-label">LON</span><span class="coord-val" id="disp-lon">—</span>
-    <span class="coords-bar-label">±</span><span class="acc-val" id="disp-acc">—</span>
-    <span class="coords-bar-label" id="lbl-spd" style="display:none">km/h</span><span class="coord-val" id="disp-spd" style="display:none">—</span>
-    <span class="coords-bar-label" id="lbl-hdg" style="display:none">°</span><span class="coord-val" id="disp-hdg" style="display:none">—</span>
-    <span style="margin-left:auto;color:var(--muted);font-size:10px" id="disp-wpts">0 WP</span>
+    <span class="coord-val" id="disp-lat" style="font-size:10px">—</span>
+    <span class="coords-bar-label">,</span>
+    <span class="coord-val" id="disp-lon" style="font-size:10px">—</span>
+    <span class="acc-val" id="disp-acc" style="color:#666;font-size:9px">—</span>
+    <span class="coord-val" id="disp-spd" style="display:none;color:#7cb87c;font-size:10px">—</span>
+    <span class="coords-bar-label" id="lbl-spd" style="display:none;font-size:9px">km/h</span>
+    <span class="coord-val" id="disp-hdg" style="display:none;color:#7cb87c;font-size:10px">—</span>
+    <span style="margin-left:auto;color:var(--muted);font-size:9px" id="disp-wpts">0 WP</span>
   </div>
 </div>
 
