@@ -2771,22 +2771,19 @@ function onGPS(pos) {
     const spdEl = document.getElementById('disp-spd');
     const hdgEl = document.getElementById('disp-hdg');
     const lblSpd = document.getElementById('lbl-spd');
-    const lblHdg = document.getElementById('lbl-hdg');
     if (spd !== null && spd > 0.3) {
       spdEl.textContent = spd.toFixed(1);
       spdEl.style.display = '';
-      lblSpd.style.display = '';
+      if (lblSpd) lblSpd.style.display = '';
     } else {
       spdEl.style.display = 'none';
-      lblSpd.style.display = 'none';
+      if (lblSpd) lblSpd.style.display = 'none';
     }
     if (hdg !== null && spd !== null && spd > 0.3) {
       hdgEl.textContent = Math.round(hdg) + '\u00b0';
       hdgEl.style.display = '';
-      lblHdg.style.display = '';
     } else {
       hdgEl.style.display = 'none';
-      lblHdg.style.display = 'none';
     }
   }
 
@@ -2873,9 +2870,7 @@ function undoMeasure() {
   else updateMeasureBar();
 }
 function restoreCoordsBar() {
-  document.querySelector('.coords-bar-label').textContent = 'LAT';
-  document.querySelectorAll('.coords-bar-label')[1].textContent = 'LON';
-  document.querySelectorAll('.coords-bar-label')[2].textContent = '±';
+  // coords-bar labels statiques (supprimés)
   if (state.currentPos) {
     document.getElementById('disp-lat').textContent = fmt(state.currentPos.lat);
     document.getElementById('disp-lon').textContent = fmt(state.currentPos.lon);
@@ -2885,9 +2880,7 @@ function restoreCoordsBar() {
 function updateMeasureBar() {
   const pts = state.measurePts;
   const total = pts.reduce((sum,_,i) => i===0 ? 0 : sum + haversine(pts[i-1], pts[i]), 0);
-  document.querySelector('.coords-bar-label').textContent = '📐';
-  document.querySelectorAll('.coords-bar-label')[1].textContent = '';
-  document.querySelectorAll('.coords-bar-label')[2].textContent = '';
+  // coords-bar labels mesure (supprimés)
   document.getElementById('disp-lat').textContent = fmtDist(total);
   document.getElementById('disp-lon').textContent = `${pts.length} pt${pts.length>1?'s':''}`;
   document.getElementById('disp-acc').textContent = '';
@@ -2957,9 +2950,7 @@ function updateCrosshairCoords() {
     const total = state.measurePts.reduce((sum,_,i) => i===0 ? 0 : sum + haversine(state.measurePts[i-1], state.measurePts[i]), 0);
     document.getElementById('crosshair-coords').textContent =
       `seg: ${fmtDist(segDist)} · tot: ${fmtDist(total + segDist)}`;
-    document.querySelector('.coords-bar-label').textContent = '📐';
-    document.querySelectorAll('.coords-bar-label')[1].textContent = '';
-    document.querySelectorAll('.coords-bar-label')[2].textContent = '';
+    // coords-bar labels mesure live (supprimés)
     document.getElementById('disp-lat').textContent = fmtDist(total + segDist);
     document.getElementById('disp-lon').textContent = `${state.measurePts.length} pt${state.measurePts.length>1?'s':''}`;
     document.getElementById('disp-acc').textContent = '';
