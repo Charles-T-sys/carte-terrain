@@ -2008,7 +2008,7 @@ body.placing-wp #placing-hint{display:block}
 #crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:490;pointer-events:none;display:none}
 #crosshair.active{display:block}
 #crosshair svg{filter:drop-shadow(0 1px 4px rgba(0,0,0,.8))}
-#crosshair-coords{position:absolute;top:50%;left:calc(50% + 30px);transform:translateY(-50%);z-index:490;background:rgba(17,26,17,.9);border:1px solid var(--warn);color:var(--warn);font-family:var(--font);font-size:10px;padding:3px 7px;border-radius:4px;pointer-events:none;white-space:nowrap;display:none}
+#crosshair-coords{position:absolute;top:calc(50% + 32px);left:50%;transform:translateX(-50%);z-index:490;background:rgba(17,26,17,.92);border:1px solid var(--warn);color:var(--warn);font-family:var(--font);font-size:13px;font-weight:bold;padding:4px 10px;border-radius:6px;pointer-events:none;white-space:nowrap;display:none;text-align:center}
 #crosshair-coords.active{display:block}
 
 /* ── TOAST ── */
@@ -2092,7 +2092,7 @@ body.placing-wp #placing-hint{display:block}
     <button class="tool-btn" title="Exporter KMZ" onclick="exportKMZ()">🗂</button>
   </div>
   <div id="placing-hint">Toucher la carte pour placer le waypoint</div>
-  <div id="measure-hint">📐 ⊕ = point · 📐 = terminer</div>
+  <div id="measure-hint">📐 Tap = point · Double-tap = terminer</div>
 
   <!-- MIRE CENTRALE -->
   <div id="crosshair">
@@ -2500,15 +2500,7 @@ function initMap(arrayBuffer) {
   });
   state.cogLayer.addTo(state.map);
   state.map.on('click', onMapClick);
-  state.map.on('dblclick', e => { if (state.measureMode) { e.originalEvent && e.originalEvent.preventDefault(); clearMeasure(); } });
-  // Double-tap iOS — deux taps < 350ms
-  let _lastTap = 0;
-  state.map.on('click', e => {
-    if (!state.measureMode) return;
-    const now = Date.now();
-    if (now - _lastTap < 350) { clearMeasure(); }
-    _lastTap = now;
-  });
+  state.map.on('dblclick', e => { if (state.measureMode) { e.originalEvent.preventDefault(); clearMeasure(); } });
 }
 
 // ══════════════════════════════════════════════════════
@@ -2576,7 +2568,7 @@ function toggleMeasure() {
   document.body.classList.add('measuring');
   if (state.placingWp) toggleWpMode();
   if (!state.crosshairMode) toggleCrosshair(); // activer la mire
-  toast('Mesure — ⊕ pour ajouter des points, 📐 pour terminer');
+  toast('Mesure — mire pour ajouter des points, double-tap pour terminer');
 }
 function clearMeasure() {
   state.measureMode = false;
@@ -2681,23 +2673,8 @@ function closeCrosshair() {
 function updateCrosshairCoords() {
   if (!state.crosshairMode || !state.map) return;
   const c = state.map.getCenter();
-  if (state.measureMode && state.measurePts.length > 0) {
-    const last = state.measurePts[state.measurePts.length-1];
-    const segDist = haversine(last, c);
-    const total = state.measurePts.reduce((sum,_,i) => i===0 ? 0 : sum + haversine(state.measurePts[i-1], state.measurePts[i]), 0);
-    document.getElementById('crosshair-coords').textContent =
-      `seg: ${fmtDist(segDist)} · tot: ${fmtDist(total + segDist)}`;
-    // Mettre à jour la coords-bar aussi
-    document.querySelector('.coords-bar-label').textContent = '📐';
-    document.querySelectorAll('.coords-bar-label')[1].textContent = '';
-    document.querySelectorAll('.coords-bar-label')[2].textContent = '';
-    document.getElementById('disp-lat').textContent = fmtDist(total + segDist);
-    document.getElementById('disp-lon').textContent = `${state.measurePts.length} pt${state.measurePts.length>1?'s':''}`;
-    document.getElementById('disp-acc').textContent = '';
-  } else {
-    document.getElementById('crosshair-coords').textContent =
-      `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
-  }
+  document.getElementById('crosshair-coords').textContent =
+    `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
 }
 function toggleWpMode() {
   if (state.crosshairMode) {
