@@ -2718,7 +2718,7 @@ function toggleWpMode() {
 }
 
 function onMapClick(e) {
-  if (state.measureMode) return; // mesure = mire uniquement
+  if (state.measureMode) { onMeasureClick(e); return; }
   if (!state.placingWp) return;
   openWpModal(e.latlng);
   state.placingWp = false;
