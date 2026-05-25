@@ -1860,6 +1860,25 @@
   --warn:#ff8f00;--danger:#e53935;--text:#d4e8d4;--muted:#7a9e7a;--wp:#ff6d00;
   --h:52px;--r:6px;--font:'Courier New',monospace;
 }
+body.sun-mode {
+  --bg:#f5f0dc;--panel:#ede8cc;--border:#b8a878;--accent:#5a7a20;--accent2:#6a8a28;
+  --warn:#c85000;--danger:#c0392b;--text:#1a1a0a;--muted:#5a5030;--wp:#c05000;
+}
+body.sun-mode header{background:#e8e0b8;border-bottom-color:#b8a878}
+body.sun-mode .tool-btn{background:rgba(232,224,184,.95);border-color:#b8a878;color:#1a1a0a}
+body.sun-mode .act-btn{background:rgba(232,224,184,.95);border-color:#b8a878;color:#1a1a0a}
+body.sun-mode #coords-bar{background:rgba(232,224,184,.95);border-top-color:#b8a878}
+body.sun-mode #nav-banner{background:rgba(220,235,190,.96);border-bottom-color:#5a7a20}
+body.sun-mode #trace-banner{background:rgba(245,220,200,.96);border-bottom-color:#c85000}
+body.sun-mode .modal{background:#ede8cc;border-color:#b8a878}
+body.sun-mode .modal-backdrop{background:rgba(180,170,130,.6)}
+body.sun-mode #wp-panel{background:#ede8cc;border-top-color:#b8a878}
+body.sun-mode #export-menu{background:#ede8cc;border-color:#b8a878}
+body.sun-mode #home-screen{background:#f5f0dc}
+body.sun-mode .project-card{background:#ede8cc;border-color:#b8a878}
+body.sun-mode input,body.sun-mode textarea{background:#f5f0dc;color:#1a1a0a;border-color:#b8a878}
+body.sun-mode .wp-item{background:#f5f0dc;border-color:#b8a878}
+body.sun-mode #placing-hint,body.sun-mode #measure-hint{background:rgba(232,224,184,.95);color:#1a1a0a;border-color:#b8a878}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font);background:var(--bg);color:var(--text);height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
 header{height:var(--h);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:10px;flex-shrink:0;z-index:1000}
@@ -2150,6 +2169,7 @@ body.placing-wp #placing-hint{display:block}
     <button class="tool-btn" title="Exporter…" onclick="toggleExportMenu()" id="btn-export" style="font-size:16px">⋯</button>
   </div>
   <div id="export-menu">
+    <button class="export-btn" id="btn-sun-mode" onclick="toggleSunMode();toggleExportMenu()">☀ Mode plein soleil</button>
     <button class="export-btn" onclick="exportGeoJSON();toggleExportMenu()">⬇ GeoJSON (WP)</button>
     <button class="export-btn" onclick="exportKMZ();toggleExportMenu()">🗂 KMZ (WP + photos)</button>
     <button class="export-btn" onclick="exportAllGPX();toggleExportMenu()">🛤 GPX (tracés)</button>
@@ -3593,8 +3613,24 @@ async function exportAllGPX(){
 // ══════════════════════════════════════════════════════
 //  MENU EXPORTS
 // ══════════════════════════════════════════════════════
+function toggleSunMode(){
+  const on=document.body.classList.toggle('sun-mode');
+  const btn=document.getElementById('btn-sun-mode');
+  if(btn)btn.textContent=on?'\uD83C\uDF11 Mode nuit':'☀ Mode plein soleil';
+  try{localStorage.setItem('navenza-sun-mode',on?'1':'0');}catch(e){}
+}
+// Restaurer mode soleil au chargement
+(function(){
+  try{if(localStorage.getItem('navenza-sun-mode')==='1'){
+    document.body.classList.add('sun-mode');
+    // Le btn n'existe pas encore au chargement, géré au premier toggleExportMenu
+  }}catch(e){}
+})();
+
 function toggleExportMenu(){
   const m=document.getElementById('export-menu');
+  const sunBtn=document.getElementById('btn-sun-mode');
+  if(sunBtn)sunBtn.textContent=document.body.classList.contains('sun-mode')?'\uD83C\uDF11 Mode nuit':'☀ Mode plein soleil';
   m.classList.toggle('open');
   if(m.classList.contains('open')){
     setTimeout(()=>document.addEventListener('click',()=>m.classList.remove('open'),{once:true}),50);
