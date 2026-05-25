@@ -2174,6 +2174,7 @@ body.placing-wp #placing-hint{display:block}
     <button class="export-btn" onclick="exportKMZ();toggleExportMenu()">🗂 KMZ (WP + photos)</button>
     <button class="export-btn" onclick="exportAllGPX();toggleExportMenu()">🛤 GPX (tracés)</button>
     <button class="export-btn" onclick="toggleWpPanel();toggleExportMenu()">≡ Liste WP</button>
+    <button class="export-btn" onclick="toggleTracePanel();toggleExportMenu()">≡ Liste tracés</button>
   </div>
   <div id="action-bar" class="visible">
     <button class="act-btn active" id="btn-gps" onclick="centerOnPos()">
@@ -2846,6 +2847,8 @@ function onGPS(pos) {
   updatePosMarker(lat, lon, acc);
   if (state.tracing) { state.tracePts.push({ lat, lon, t: new Date().toISOString() }); state.traceLine.addLatLng([lat,lon]); }
   updateNavBanner();
+  // Mettre à jour distances dans la liste WP si ouverte
+  if(document.getElementById('wp-panel').classList.contains('open')) renderWpList();
 }
 function onGPSError(err) {
   document.getElementById('gps-pill').className = 'gps-pill no-fix';
@@ -3360,6 +3363,30 @@ function setWpCatFilter(btn){
   btn.classList.add('active');
   renderWpList();
 }
+function wpDistLabel(wp){
+  if(!state.currentPos)return '';
+  var R=6371000,toRad=function(x){return x*Math.PI/180;};
+  var dLat=toRad(wp.lat-state.currentPos.lat),dLon=toRad(wp.lon-state.currentPos.lon);
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(state.currentPos.lat))*Math.cos(toRad(wp.lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+  var d=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  return '<span style="font-size:9px;color:var(--accent2);margin-left:4px">\u2192 '+fmtDist(d)+'</span>';
+}
+function shareWp(id){
+  var wp=state.waypoints.find(function(w){return w.id===id;});
+  if(!wp)return;
+  var txt=wp.name+'\n'+fmt(wp.lat)+', '+fmt(wp.lon);
+  if(wp.comment)txt+='\n'+wp.comment;
+  if(navigator.share){
+    navigator.share({title:wp.name,text:txt}).catch(function(){});
+  } else {
+    var a=document.createElement('a');
+    a.href='sms:?body='+encodeURIComponent(txt);
+    a.click();
+  }
+}
+function centerOnWp(lat,lon){
+  state.map.flyTo([lat,lon],Math.max(state.map.getZoom(),15),{duration:0.8});
+}
 function renderWpList(){
   const list=document.getElementById('wp-list');
   if(!state.waypoints.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun waypoint</div>';return;}
@@ -3374,15 +3401,16 @@ function renderWpList(){
   });
   if(!filtered.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun r\u00e9sultat</div>';return;}
   list.innerHTML=filtered.map(function(wp){
-    return '<div class="wp-item">'
+    return '<div class="wp-item" onclick="centerOnWp('+wp.lat+','+wp.lon+')" style="cursor:pointer">'
       +wpThumb(wp)
       +'<div style="flex:1;min-width:0">'
-      +'<div class="wp-item-name">'+wp.name+'</div>'
+      +'<div class="wp-item-name">'+wp.name+wpDistLabel(wp)+'</div>'
       +'<div class="wp-item-coords">'+fmt(wp.lat)+', '+fmt(wp.lon)+'</div>'
       +(wp.comment?'<div class="wp-item-comment">'+wp.comment+'</div>':'')
       +'</div>'
-      +'<button class="wp-item-edit" onclick="editWp('+wp.id+')" title="\u00c9diter">\u270e</button>'
-      +'<button class="wp-item-del" onclick="deleteWp('+wp.id+')">\u2715</button>'
+      +'<button class="wp-item-edit" onclick="event.stopPropagation();shareWp('+wp.id+')" title="Partager" style="font-size:13px">\u{1F4E4}</button>'
+      +'<button class="wp-item-edit" onclick="event.stopPropagation();editWp('+wp.id+')" title="\u00c9diter">\u270e</button>'
+      +'<button class="wp-item-del" onclick="event.stopPropagation();deleteWp('+wp.id+')">\u2715</button>'
       +'</div>';
   }).join('');
 }
@@ -3588,14 +3616,76 @@ function updateTraceBanner(){
 async function saveTrace(){
   if(!state.traces)state.traces=[];
   const n=state.traces.length+1;
-  const trace={id:Date.now(),projectId:state.currentProjectId,name:`Tracé-${n}`,points:state.tracePts.slice(),timestamp:new Date().toISOString(),color:state.traceColor||'#ff3d00',weight:state.traceWeight||4};
+  const defaultName='Tracé-'+n;
+  // Demander le nom
+  const nom=window.prompt('Nom du tracé :',defaultName);
+  if(nom===null){toast('Tracé annulé');return;} // annuler = ne pas sauvegarder
+  const traceName=nom.trim()||defaultName;
+  const trace={id:Date.now(),projectId:state.currentProjectId,name:traceName,points:state.tracePts.slice(),timestamp:new Date().toISOString(),color:state.traceColor||'#ff3d00',weight:state.traceWeight||4};
   state.traces.push(trace);
   if(state.currentProjectId){
     await dbPut('traces',trace);
     const p=await dbGet('projects',state.currentProjectId);
     if(p){p.traceCount=state.traces.length;await dbPut('projects',p);}
   }
-  toast(`Tracé-${n} enregistré — ${trace.points.length} pts`);
+  toast(traceName+' enregistré — '+trace.points.length+' pts');
+}
+function toggleTracePanel(){
+  const panel=document.getElementById('trace-panel');
+  if(!panel){
+    // Créer le panel à la volée
+    const div=document.createElement('div');
+    div.id='trace-panel';
+    div.className='';
+    div.style.cssText='position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.7);display:flex;align-items:flex-end';
+    div.innerHTML='<div style="background:var(--panel);width:100%;max-height:70dvh;overflow-y:auto;border-radius:12px 12px 0 0;padding:16px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      +'<span style="font-size:12px;color:var(--accent);letter-spacing:1px;text-transform:uppercase">Tracés enregistrés</span>'
+      +'<button onclick="document.getElementById(\'trace-panel\').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">\u2715</button>'
+      +'</div>'
+      +'<div id="trace-list"></div>'
+      +'</div>';
+    document.body.appendChild(div);
+    div.addEventListener('click',function(e){if(e.target===div)div.remove();});
+  }
+  renderTraceList();
+  document.getElementById('trace-panel').style.display='flex';
+}
+function renderTraceList(){
+  const list=document.getElementById('trace-list');
+  if(!list)return;
+  if(!state.traces||!state.traces.length){
+    list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">Aucun tracé enregistré</div>';
+    return;
+  }
+  list.innerHTML=state.traces.map(function(tr){
+    const pts=tr.points||[];
+    var dist=0;
+    for(var i=1;i<pts.length;i++){
+      var R=6371000,toRad=function(x){return x*Math.PI/180;};
+      var dLat=toRad(pts[i].lat-pts[i-1].lat),dLon=toRad(pts[i].lon-pts[i-1].lon);
+      var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(pts[i-1].lat))*Math.cos(toRad(pts[i].lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
+      dist+=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+    const date=tr.timestamp?new Date(tr.timestamp).toLocaleDateString('fr-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="width:14px;height:14px;border-radius:2px;background:'+tr.color+';flex-shrink:0"></div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:12px;color:var(--text);font-weight:bold">'+tr.name+'</div>'
+      +'<div style="font-size:10px;color:var(--muted)">'+fmtDist(dist)+' · '+pts.length+' pts · '+date+'</div>'
+      +'</div>'
+      +'<button onclick="deleteTrace('+tr.id+')" style="background:none;border:none;color:var(--danger);font-size:14px;cursor:pointer;padding:4px 8px">\u2715</button>'
+      +'</div>';
+  }).join('');
+}
+async function deleteTrace(id){
+  if(!confirm('Supprimer ce tracé ?'))return;
+  state.traces=state.traces.filter(function(t){return t.id!==id;});
+  await dbDelete('traces',id);
+  // Retirer de la carte
+  // (les polylines sont reconstruites au chargement du projet — un reload suffira)
+  renderTraceList();
+  toast('Tracé supprimé');
 }
 async function exportAllGPX(){
   if(!state.traces||!state.traces.length){toast('Aucun tracé enregistré');return;}
