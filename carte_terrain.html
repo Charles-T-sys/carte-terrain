@@ -2021,6 +2021,8 @@ body.measuring #measure-hint{display:block}
 .wp-item-coords{color:var(--muted);font-size:10px}
 .wp-item-comment{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
 .wp-item-del{background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px}
+.wp-cat-btn{padding:3px 8px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-size:10px;cursor:pointer;font-family:var(--font);transition:all .15s;-webkit-tap-highlight-color:transparent}
+.wp-cat-btn.active{border-color:var(--accent);color:var(--text);background:rgba(76,175,80,.15)}
 .wp-thumb{width:36px;height:36px;border-radius:4px;object-fit:cover;border:1px solid var(--border);flex-shrink:0}
 
 /* ── MODALS ── */
@@ -2249,7 +2251,20 @@ body.placing-wp #placing-hint{display:block}
 <div id="wp-panel">
   <div class="wp-panel-header">
     <span class="wp-panel-title">Waypoints</span>
+    <button class="tool-btn" style="width:28px;height:28px;font-size:16px" onclick="toggleWpSearch()" title="Rechercher" id="btn-wp-search">🔍</button>
     <button class="tool-btn" style="width:28px;height:28px;font-size:14px" onclick="toggleWpPanel()">✕</button>
+  </div>
+  <div id="wp-search-area" style="display:none;margin-bottom:8px">
+    <input id="wp-search" type="search" placeholder="Rechercher…" oninput="renderWpList()" autocomplete="off" autocorrect="off" spellcheck="false" style="width:100%;padding:6px 10px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font);font-size:11px;box-sizing:border-box;margin-bottom:6px">
+    <div id="wp-cat-filter" style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="wp-cat-btn active" data-cat="" onclick="setWpCatFilter(this)">Tous</button>
+      <button class="wp-cat-btn" data-cat="observation" onclick="setWpCatFilter(this)">👁 Obs</button>
+      <button class="wp-cat-btn" data-cat="faune" onclick="setWpCatFilter(this)">🦌 Faune</button>
+      <button class="wp-cat-btn" data-cat="peche" onclick="setWpCatFilter(this)">🎣 Pêche</button>
+      <button class="wp-cat-btn" data-cat="camping" onclick="setWpCatFilter(this)">⛺ Camp</button>
+      <button class="wp-cat-btn" data-cat="danger" onclick="setWpCatFilter(this)">⚠ Danger</button>
+      <button class="wp-cat-btn" data-cat="infra" onclick="setWpCatFilter(this)">🔧 Infra</button>
+    </div>
   </div>
   <div class="wp-list" id="wp-list"></div>
 </div>
@@ -3321,22 +3336,40 @@ function setWpCatFilter(btn){
   btn.classList.add('active');
   renderWpList();
 }
+function toggleWpSearch(){
+  const area=document.getElementById('wp-search-area');
+  const btn=document.getElementById('btn-wp-search');
+  const open=area.style.display==='none';
+  area.style.display=open?'block':'none';
+  btn.style.borderColor=open?'var(--accent)':'';
+  btn.style.color=open?'var(--accent)':'';
+  if(open){
+    const s=document.getElementById('wp-search');
+    if(s){s.value='';s.focus();}
+    document.querySelectorAll('#wp-cat-filter .wp-cat-btn').forEach(function(b){b.classList.remove('active');});
+    var all=document.querySelector('#wp-cat-filter .wp-cat-btn[data-cat=""]');
+    if(all)all.classList.add('active');
+  }
+  renderWpList();
+}
+function setWpCatFilter(btn){
+  document.querySelectorAll('#wp-cat-filter .wp-cat-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  renderWpList();
+}
 function renderWpList(){
   const list=document.getElementById('wp-list');
   if(!state.waypoints.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun waypoint</div>';return;}
   const searchEl=document.getElementById('wp-search');
   const catEl=document.querySelector('#wp-cat-filter .wp-cat-btn.active');
-  const q=(searchEl?searchEl.value.trim().toLowerCase():'');
+  const q=(searchEl&&document.getElementById('wp-search-area').style.display!=='none')?searchEl.value.trim().toLowerCase():'';
   const catFilter=(catEl?catEl.dataset.cat:'');
   const filtered=state.waypoints.filter(function(wp){
-    const matchTxt=!q||wp.name.toLowerCase().includes(q)||(wp.comment&&wp.comment.toLowerCase().includes(q));
-    const matchCat=!catFilter||(wp.cat||'observation')===catFilter;
+    var matchTxt=!q||wp.name.toLowerCase().includes(q)||(wp.comment&&wp.comment.toLowerCase().includes(q));
+    var matchCat=!catFilter||(wp.cat||'observation')===catFilter;
     return matchTxt&&matchCat;
   });
-  if(!filtered.length){
-    list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun résultat</div>';
-    return;
-  }
+  if(!filtered.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun r\u00e9sultat</div>';return;}
   list.innerHTML=filtered.map(function(wp){
     return '<div class="wp-item">'
       +wpThumb(wp)
@@ -3350,13 +3383,14 @@ function renderWpList(){
       +'</div>';
   }).join('');
 }
-function toggleWpPanel() {
+function toggleWpPanel(){
   const p=document.getElementById('wp-panel');
   p.classList.toggle('open');
   if(p.classList.contains('open')){
-    const s=document.getElementById('wp-search');if(s)s.value='';
-    document.querySelectorAll('#wp-cat-filter .wp-cat-btn').forEach(b=>b.classList.remove('active'));
-    const all=document.querySelector('#wp-cat-filter .wp-cat-btn[data-cat=""]');if(all)all.classList.add('active');
+    var area=document.getElementById('wp-search-area');
+    if(area)area.style.display='none';
+    var btn=document.getElementById('btn-wp-search');
+    if(btn){btn.style.borderColor='';btn.style.color='';}
     renderWpList();
   }
 }
