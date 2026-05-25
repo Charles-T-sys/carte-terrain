@@ -1996,23 +1996,6 @@ body.measuring #measure-hint{display:block}
 /* ── WAYPOINT PANEL ── */
 #wp-panel{position:absolute;bottom:36px;left:0;right:0;z-index:600;background:var(--panel);border-top:1px solid var(--border);padding:12px;transform:translateY(100%);transition:transform .25s ease;max-height:50dvh;overflow-y:auto;display:none}
 #wp-panel.open{transform:translateY(0)}
-<div id="wp-panel">
-  <div class="wp-panel-header">
-    <span class="wp-panel-title">Waypoints</span>
-    <button class="tool-btn" style="width:28px;height:28px;font-size:14px" onclick="toggleWpPanel()">✕</button>
-  </div>
-  <input id="wp-search" type="search" placeholder="🔍 Rechercher…" oninput="renderWpList()" autocomplete="off" autocorrect="off" spellcheck="false">
-  <div id="wp-cat-filter">
-    <button class="wp-cat-btn active" data-cat="" onclick="setWpCatFilter(this)">Tous</button>
-    <button class="wp-cat-btn" data-cat="observation" onclick="setWpCatFilter(this)">👁 Obs</button>
-    <button class="wp-cat-btn" data-cat="faune" onclick="setWpCatFilter(this)">🦌 Faune</button>
-    <button class="wp-cat-btn" data-cat="peche" onclick="setWpCatFilter(this)">🎣 Pêche</button>
-    <button class="wp-cat-btn" data-cat="camping" onclick="setWpCatFilter(this)">⛺ Camp</button>
-    <button class="wp-cat-btn" data-cat="danger" onclick="setWpCatFilter(this)">⚠ Danger</button>
-    <button class="wp-cat-btn" data-cat="infra" onclick="setWpCatFilter(this)">🔧 Infra</button>
-  </div>
-  <div class="wp-list" id="wp-list"></div>
-</div>
 .wp-panel-title{font-size:12px;color:var(--accent);letter-spacing:1px;text-transform:uppercase}
 .wp-list{display:flex;flex-direction:column;gap:6px}
 .wp-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--r);border:1px solid var(--border);background:var(--bg);font-size:11px}
