@@ -1725,13 +1725,8 @@
         var ifds = UTIF.decode(self._buffer);
         if (!ifds || !ifds.length) throw new Error('Aucun IFD dans le TIFF');
 
-        // Stocker tous les IFDs (overview 0=pleine res, 1,2,3...= réductions)
-        self._ifds   = ifds;
-        self._buffer2 = self._buffer;
-
-        // Décoder uniquement l'overview la plus petite pour init rapide
-        var initIdx = ifds.length > 3 ? ifds.length - 2 : 0;
-        var ifd = ifds[initIdx];
+        // Toujours décoder IFD 0 — pleine résolution
+        var ifd = ifds[0];
         UTIF.decodeImage(self._buffer, ifd, ifds);
         var rgba = UTIF.toRGBA8(ifd);
 
@@ -1742,33 +1737,29 @@
         var src = document.createElement('canvas');
         src.width = w; src.height = h;
         var ctx = src.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         var imgData = ctx.createImageData(w, h);
         imgData.data.set(rgba);
         ctx.putImageData(imgData, 0, 0);
-        self._srcCanvas    = src;
-        self._srcLevel     = initIdx;
-        self._srcFullW     = ifds[0].width;
+        self._srcCanvas = src;
 
-        // Bounds — toujours depuis l'IFD principal (index 0)
-        var bounds = getBoundsFromTags(ifds[0]);
+        // Bounds depuis IFD 0
+        var bounds = getBoundsFromTags(ifd);
         if (!bounds) throw new Error('Géoréférencement introuvable');
         self._bounds = bounds;
-        window._dbgLayer = self; // debug
+        window._dbgLayer = self;
 
         if (self._map) {
-          // fitBounds puis render après que Leaflet a repositionné la vue
-          // on écoute moveend UNE fois, avec fallback setTimeout
           var rendered = false;
           function doRender() {
             if (rendered) return;
             rendered = true;
-            console.log('doRender appelé, map zoom:', self._map ? self._map.getZoom() : 'null');
             self._render();
-            console.log('canvas apres render:', self._canvas ? self._canvas.width + 'x' + self._canvas.height : 'null');
             if (self._options.onReady) self._options.onReady();
           }
           self._map.once('moveend', doRender);
-          setTimeout(doRender, 500); // fallback si moveend ne se déclenche pas
+          setTimeout(doRender, 500);
           self._map.fitBounds(bounds);
         }
 
