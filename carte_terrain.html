@@ -1725,8 +1725,13 @@
         var ifds = UTIF.decode(self._buffer);
         if (!ifds || !ifds.length) throw new Error('Aucun IFD dans le TIFF');
 
-        // Toujours décoder IFD 0 — pleine résolution
-        var ifd = ifds[0];
+        // Stocker tous les IFDs (overview 0=pleine res, 1,2,3...= réductions)
+        self._ifds   = ifds;
+        self._buffer2 = self._buffer;
+
+        // Décoder uniquement l'overview la plus petite pour init rapide
+        var initIdx = ifds.length > 3 ? ifds.length - 2 : 0;
+        var ifd = ifds[initIdx];
         UTIF.decodeImage(self._buffer, ifd, ifds);
         var rgba = UTIF.toRGBA8(ifd);
 
@@ -1737,29 +1742,33 @@
         var src = document.createElement('canvas');
         src.width = w; src.height = h;
         var ctx = src.getContext('2d');
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
         var imgData = ctx.createImageData(w, h);
         imgData.data.set(rgba);
         ctx.putImageData(imgData, 0, 0);
-        self._srcCanvas = src;
+        self._srcCanvas    = src;
+        self._srcLevel     = initIdx;
+        self._srcFullW     = ifds[0].width;
 
-        // Bounds depuis IFD 0
-        var bounds = getBoundsFromTags(ifd);
+        // Bounds — toujours depuis l'IFD principal (index 0)
+        var bounds = getBoundsFromTags(ifds[0]);
         if (!bounds) throw new Error('Géoréférencement introuvable');
         self._bounds = bounds;
-        window._dbgLayer = self;
+        window._dbgLayer = self; // debug
 
         if (self._map) {
+          // fitBounds puis render après que Leaflet a repositionné la vue
+          // on écoute moveend UNE fois, avec fallback setTimeout
           var rendered = false;
           function doRender() {
             if (rendered) return;
             rendered = true;
+            console.log('doRender appelé, map zoom:', self._map ? self._map.getZoom() : 'null');
             self._render();
+            console.log('canvas apres render:', self._canvas ? self._canvas.width + 'x' + self._canvas.height : 'null');
             if (self._options.onReady) self._options.onReady();
           }
           self._map.once('moveend', doRender);
-          setTimeout(doRender, 500);
+          setTimeout(doRender, 500); // fallback si moveend ne se déclenche pas
           self._map.fitBounds(bounds);
         }
 
@@ -1897,6 +1906,8 @@ body.sun-mode #nav-banner{background:rgba(220,235,190,.96);border-bottom-color:#
 body.sun-mode #trace-banner{background:rgba(245,220,200,.96);border-bottom-color:#c85000}
 body.sun-mode .modal{background:#ede8cc;border-color:#b8a878}
 body.sun-mode .modal-backdrop{background:rgba(180,170,130,.6)}
+body.sun-mode #sector-modal .modal{background:#ede8cc;border-color:#b8a878}
+body.sun-mode #sector-modal .sector-item{background:#e0d9b8;border-color:#b8a878}
 body.sun-mode #wp-panel{background:#ede8cc;border-top-color:#b8a878}
 body.sun-mode #export-menu{background:#ede8cc;border-color:#b8a878}
 body.sun-mode #home-screen{background:#f5f0dc}
@@ -2200,6 +2211,8 @@ body.placing-wp #placing-hint{display:block}
     <button class="export-btn" onclick="exportAllGPX();toggleExportMenu()">🛤 GPX (tracés)</button>
     <button class="export-btn" onclick="exportSHP();toggleExportMenu()">📦 Shapefile (WP + tracés)</button>
     <button class="export-btn" onclick="toggleWpPanel();toggleExportMenu()">≡ Liste WP</button>
+    <button class="export-btn" id="btn-change-sector" onclick="openSectorModal();toggleExportMenu()" style="display:none">🗺 Changer de secteur</button>
+    <button class="export-btn" onclick="document.getElementById('file-add-sector').click();toggleExportMenu()">＋ Ajouter un secteur</button>
   </div>
   <div id="action-bar" class="visible">
     <button class="act-btn active" id="btn-gps" onclick="centerOnPos()">
@@ -2411,6 +2424,19 @@ body.placing-wp #placing-hint{display:block}
     </button>
   </div>
 </div>
+<div class="modal-backdrop" id="sector-modal">
+  <div class="modal" style="width:320px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;gap:0;padding:0">
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <h3 style="margin:0;font-size:13px;color:var(--accent);letter-spacing:1px">🗺 SECTEURS</h3>
+      <button onclick="closeSectorModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:0 4px">×</button>
+    </div>
+    <div id="sector-list" style="overflow-y:auto;flex:1;padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+    <div style="padding:12px;border-top:1px solid var(--border);flex-shrink:0">
+      <button class="btn primary" style="width:100%;font-size:12px" onclick="document.getElementById('file-add-sector').click()">＋ Ajouter un secteur (.tif)</button>
+      <input type="file" id="file-add-sector" accept=".tif,.tiff" style="display:none">
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="confirm-modal">
   <div class="confirm-modal">
     <h3>🗑 Supprimer le projet ?</h3>
@@ -2429,7 +2455,7 @@ body.placing-wp #placing-hint{display:block}
 //  INDEXEDDB
 // ══════════════════════════════════════════════════════
 const DB_NAME = 'carte_terrain_db_v2';
-const DB_VER  = 1;
+const DB_VER  = 2;
 let db = null;
 
 function openDB() {
@@ -2437,10 +2463,11 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
+      const oldVer = e.oldVersion;
       if (!d.objectStoreNames.contains('projects')) {
         d.createObjectStore('projects', { keyPath: 'id' });
       }
-      // maps : stocke le Blob COG + bbox
+      // maps : stocke les secteurs COG
       if (!d.objectStoreNames.contains('maps')) {
         d.createObjectStore('maps', { keyPath: 'projectId' });
       }
@@ -2451,6 +2478,31 @@ function openDB() {
       if (!d.objectStoreNames.contains('traces')) {
         const ts = d.createObjectStore('traces', { keyPath: 'id' });
         ts.createIndex('projectId', 'projectId');
+      }
+      // Migration v1 → v2 : {projectId, cogBlob} → {projectId, sectors:[], activeSectorId}
+      if (oldVer < 2 && d.objectStoreNames.contains('maps')) {
+        try {
+          const tx = e.target.transaction;
+          const store = tx.objectStore('maps');
+          const curReq = store.openCursor();
+          curReq.onsuccess = ev => {
+            try {
+              const cursor = ev.target.result;
+              if (!cursor) return;
+              const rec = cursor.value;
+              if (rec.cogBlob && !rec.sectors) {
+                const migrated = {
+                  projectId: rec.projectId,
+                  activeSectorId: 'main',
+                  sectors: [{ id: 'main', name: '#1 – Carte principale', cogBlob: rec.cogBlob }]
+                };
+                cursor.update(migrated);
+              }
+              cursor.continue();
+            } catch(migErr) { console.warn('Migration cursor error (non-fatal):', migErr); }
+          };
+          curReq.onerror = ev => console.warn('Migration cursor open error (non-fatal):', ev.target.error);
+        } catch(migErr) { console.warn('Migration v1→v2 error (non-fatal):', migErr); }
       }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
@@ -2525,6 +2577,7 @@ const state = {
   wpShape:'circle', wpColor:'#ff6d00', wpCat:'observation', editingWpId:null,
   traceColor:'#ff3d00', traceWeight:4, movingWpId:null,
   navTargetId: null,
+  activeSectorId: null,
 };
 
 // ══════════════════════════════════════════════════════
@@ -2612,14 +2665,20 @@ async function openProject(projectId) {
   state.wpCounter  = wps.length + 1;
 
   const mapData = await dbGet('maps', projectId);
-  if (mapData?.cogBlob) {
-    document.getElementById('load-project-name').textContent = project.name;
-    showScreen('load');
+  document.getElementById('load-project-name').textContent = project.name;
+  showScreen('load');
+  if (mapData?.sectors?.length) {
+    // Format v2
+    const activeSector = mapData.sectors.find(s => s.id === mapData.activeSectorId)
+                      || mapData.sectors[0];
+    state.activeSectorId = activeSector.id;
+    await loadCOGFromBlob(activeSector.cogBlob);
+  } else if (mapData?.cogBlob) {
+    // Fallback format v1 (migration non encore appliquée)
+    state.activeSectorId = 'main';
     await loadCOGFromBlob(mapData.cogBlob);
-  } else {
-    document.getElementById('load-project-name').textContent = project.name;
-    showScreen('load');
   }
+  // sinon : écran load vide, l'utilisateur charge un .tif manuellement
 }
 
 // ── Renommage ──
@@ -2687,7 +2746,7 @@ async function goHome() {
   if (state.map) { state.map.remove(); state.map = null; state.cogLayer = null; state.posMarker = null; state.posCircle = null; state.wpMarkers = []; }
   if (state.tracing) { state.tracing = false; document.getElementById('btn-trace').classList.remove('recording'); }
   state.traces = [];
-  state.currentProjectId = null; state.waypoints = []; state.tracePts = [];
+  state.currentProjectId = null; state.waypoints = []; state.tracePts = []; state.activeSectorId = null;
   document.getElementById('header-title').textContent = '🗺 Carte Terrain';
   hideProgress();
   showScreen('home');
@@ -2712,10 +2771,36 @@ async function loadCOG(file) {
   showProgress(15);
 
   const blob = new Blob([await file.arrayBuffer()], { type: 'image/tiff' });
-  await dbPut('maps', { projectId: state.currentProjectId, cogBlob: blob });
   showProgress(40);
 
-  await loadCOGFromBlob(blob);
+  // Récupère ou crée le document maps pour ce projet
+  let mapDoc = await dbGet('maps', state.currentProjectId);
+  if (!mapDoc) {
+    // Premier COG du projet → crée le document avec sectors[]
+    const sectorName = '#1 – ' + _sectorNameFromFile(file.name);
+    const sectorId = 'sec_' + Date.now();
+    mapDoc = {
+      projectId: state.currentProjectId,
+      activeSectorId: sectorId,
+      sectors: [{ id: sectorId, name: sectorName, cogBlob: blob }]
+    };
+  } else {
+    // Ajout d'un secteur supplémentaire
+    const num = mapDoc.sectors.length + 1;
+    const sectorName = '#' + num + ' – ' + _sectorNameFromFile(file.name);
+    const sectorId = 'sec_' + Date.now();
+    mapDoc.sectors.push({ id: sectorId, name: sectorName, cogBlob: blob });
+    mapDoc.activeSectorId = sectorId;
+  }
+  state.activeSectorId = mapDoc.activeSectorId;
+  await dbPut('maps', mapDoc);
+
+  const activeSector = mapDoc.sectors.find(s => s.id === mapDoc.activeSectorId);
+  await loadCOGFromBlob(activeSector.cogBlob);
+}
+
+function _sectorNameFromFile(filename) {
+  return filename.replace(/\.(tif|tiff)$/i, '').replace(/_/g, ' ');
 }
 
 async function loadCOGFromBlob(blob) {
@@ -2746,6 +2831,7 @@ async function loadCOGFromBlob(blob) {
 
     showScreen('map');
     if (state.map) state.map.invalidateSize();
+    _updateSectorBtn();
   } catch(err) {
     setLoadStatus('⚠ Erreur : ' + err.message);
     console.error(err);
@@ -3889,6 +3975,110 @@ function onHeading(e){
   state.heading=h;
   if(state.posMarker){const el=state.posMarker.getElement();if(el){let arr=el.querySelector('.heading-marker');if(!arr){arr=document.createElement('div');arr.className='heading-marker';el.querySelector('.pos-marker').appendChild(arr);}el.querySelector('.pos-marker').style.transform=`rotate(${h}deg)`;}}
 }
+
+// ══════════════════════════════════════════════════════
+//  SÉLECTEUR DE SECTEUR
+// ══════════════════════════════════════════════════════
+async function openSectorModal() {
+  const mapDoc = await dbGet('maps', state.currentProjectId);
+  if (!mapDoc?.sectors?.length) return;
+
+  const list = document.getElementById('sector-list');
+  list.innerHTML = mapDoc.sectors.map(s => {
+    const isActive = s.id === state.activeSectorId;
+    return `<div class="sector-item" style="
+      display:flex;align-items:center;gap:10px;padding:10px 12px;
+      border-radius:var(--r);border:1px solid ${isActive ? 'var(--accent)' : 'var(--border)'};
+      background:${isActive ? 'rgba(76,175,80,.12)' : 'var(--bg)'};
+      cursor:pointer;-webkit-tap-highlight-color:transparent;
+    " onclick="swapSector('${s.id}')">
+      <span style="font-size:18px">${isActive ? '✅' : '🗺'}</span>
+      <span style="flex:1;font-size:13px;color:var(--text)">${s.name}</span>
+      ${isActive ? '<span style="font-size:10px;color:var(--accent)">ACTIF</span>' : ''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('sector-modal').classList.add('open');
+}
+
+function closeSectorModal() {
+  document.getElementById('sector-modal').classList.remove('open');
+}
+
+async function swapSector(sectorId) {
+  if (sectorId === state.activeSectorId) { closeSectorModal(); return; }
+  closeSectorModal();
+
+  const mapDoc = await dbGet('maps', state.currentProjectId);
+  const sector = mapDoc?.sectors?.find(s => s.id === sectorId);
+  if (!sector) { toast('Secteur introuvable'); return; }
+
+  // Décharge le COG actuel sans toucher à la carte Leaflet ni aux WP/tracés
+  if (state.cogLayer) {
+    state.map.removeLayer(state.cogLayer);
+    state.cogLayer = null;
+  }
+
+  // Met à jour le secteur actif en DB
+  mapDoc.activeSectorId = sectorId;
+  await dbPut('maps', mapDoc);
+  state.activeSectorId = sectorId;
+
+  // Charge le nouveau COG
+  toast('Chargement : ' + sector.name + '…', 3000);
+  showProgress(30);
+  setLoadStatus('Chargement ' + sector.name + '…');
+
+  try {
+    const arrayBuffer = await sector.cogBlob.arrayBuffer();
+    showProgress(65);
+
+    // Crée et ajoute le nouveau TiffLayer sur la carte existante
+    state.cogLayer = createTiffLayer(arrayBuffer, {
+      onReady: () => {
+        hideProgress();
+        toast(sector.name + ' chargé ✓');
+        _updateSectorBtn();
+      }
+    });
+    state.cogLayer.addTo(state.map);
+  } catch(err) {
+    hideProgress();
+    toast('⚠ Erreur chargement : ' + err.message);
+    console.error(err);
+  }
+}
+
+// Affiche/masque le bouton secteur selon le nb de secteurs disponibles
+async function _updateSectorBtn() {
+  const btn = document.getElementById('btn-change-sector');
+  if (!btn) return;
+  const mapDoc = await dbGet('maps', state.currentProjectId);
+  btn.style.display = (mapDoc?.sectors?.length > 1) ? '' : 'none';
+}
+
+// Event : ajout d'un secteur depuis la modal
+document.getElementById('file-add-sector').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f || (!f.name.endsWith('.tif') && !f.name.endsWith('.tiff'))) return;
+  closeSectorModal();
+
+  const blob = new Blob([await f.arrayBuffer()], { type: 'image/tiff' });
+  const mapDoc = await dbGet('maps', state.currentProjectId);
+  if (!mapDoc) { toast('⚠ Aucun projet actif'); return; }
+
+  const num = mapDoc.sectors.length + 1;
+  const sectorName = '#' + num + ' – ' + _sectorNameFromFile(f.name);
+  const sectorId = 'sec_' + Date.now();
+  mapDoc.sectors.push({ id: sectorId, name: sectorName, cogBlob: blob });
+  await dbPut('maps', mapDoc);
+
+  toast('Secteur ajouté : ' + sectorName, 2500);
+  await _updateSectorBtn();
+  // Propose de basculer immédiatement
+  await swapSector(sectorId);
+});
 
 // ══════════════════════════════════════════════════════
 //  EVENTS
