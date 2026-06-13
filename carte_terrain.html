@@ -2173,8 +2173,8 @@ body.placing-wp #placing-hint{display:block}
     <button class="export-btn" onclick="exportGeoJSON();toggleExportMenu()">⬇ GeoJSON (WP)</button>
     <button class="export-btn" onclick="exportKMZ();toggleExportMenu()">🗂 KMZ (WP + photos)</button>
     <button class="export-btn" onclick="exportAllGPX();toggleExportMenu()">🛤 GPX (tracés)</button>
+    <button class="export-btn" onclick="exportSHP();toggleExportMenu()">📦 Shapefile (WP + tracés)</button>
     <button class="export-btn" onclick="toggleWpPanel();toggleExportMenu()">≡ Liste WP</button>
-    <button class="export-btn" onclick="toggleTracePanel();toggleExportMenu()">≡ Liste tracés</button>
   </div>
   <div id="action-bar" class="visible">
     <button class="act-btn active" id="btn-gps" onclick="centerOnPos()">
@@ -2458,12 +2458,7 @@ function dbDelete(store, key) {
     r.onsuccess = () => res(); r.onerror = () => rej(r.error);
   });
 }
-function dbGetAll(store) {
-  return new Promise((res, rej) => {
-    const r = db.transaction(store,'readonly').objectStore(store).getAll();
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-  });
-}
+
 function dbGetByIndex(store, idx, val) {
   return new Promise((res, rej) => {
     const r = db.transaction(store,'readonly').objectStore(store).index(idx).getAll(val);
@@ -2847,8 +2842,6 @@ function onGPS(pos) {
   updatePosMarker(lat, lon, acc);
   if (state.tracing) { state.tracePts.push({ lat, lon, t: new Date().toISOString() }); state.traceLine.addLatLng([lat,lon]); }
   updateNavBanner();
-  // Mettre à jour distances dans la liste WP si ouverte
-  if(document.getElementById('wp-panel').classList.contains('open')) renderWpList();
 }
 function onGPSError(err) {
   document.getElementById('gps-pill').className = 'gps-pill no-fix';
@@ -3337,11 +3330,7 @@ function wpThumb(wp){
   if(p.length)return `<img class="wp-thumb" src="${p[0]}" alt="">`;
   return `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${wpShapeSvg(wp.shape||'circle',wp.color||'#ff6d00')}</div>`;
 }
-function setWpCatFilter(btn){
-  document.querySelectorAll('#wp-cat-filter .wp-cat-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderWpList();
-}
+
 function toggleWpSearch(){
   const area=document.getElementById('wp-search-area');
   const btn=document.getElementById('btn-wp-search');
@@ -3363,30 +3352,6 @@ function setWpCatFilter(btn){
   btn.classList.add('active');
   renderWpList();
 }
-function wpDistLabel(wp){
-  if(!state.currentPos)return '';
-  var R=6371000,toRad=function(x){return x*Math.PI/180;};
-  var dLat=toRad(wp.lat-state.currentPos.lat),dLon=toRad(wp.lon-state.currentPos.lon);
-  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(state.currentPos.lat))*Math.cos(toRad(wp.lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
-  var d=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  return '<span style="font-size:9px;color:var(--accent2);margin-left:4px">\u2192 '+fmtDist(d)+'</span>';
-}
-function shareWp(id){
-  var wp=state.waypoints.find(function(w){return w.id===id;});
-  if(!wp)return;
-  var txt=wp.name+'\n'+fmt(wp.lat)+', '+fmt(wp.lon);
-  if(wp.comment)txt+='\n'+wp.comment;
-  if(navigator.share){
-    navigator.share({title:wp.name,text:txt}).catch(function(){});
-  } else {
-    var a=document.createElement('a');
-    a.href='sms:?body='+encodeURIComponent(txt);
-    a.click();
-  }
-}
-function centerOnWp(lat,lon){
-  state.map.flyTo([lat,lon],Math.max(state.map.getZoom(),15),{duration:0.8});
-}
 function renderWpList(){
   const list=document.getElementById('wp-list');
   if(!state.waypoints.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun waypoint</div>';return;}
@@ -3401,16 +3366,15 @@ function renderWpList(){
   });
   if(!filtered.length){list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:10px">Aucun r\u00e9sultat</div>';return;}
   list.innerHTML=filtered.map(function(wp){
-    return '<div class="wp-item" onclick="centerOnWp('+wp.lat+','+wp.lon+')" style="cursor:pointer">'
+    return '<div class="wp-item">'
       +wpThumb(wp)
       +'<div style="flex:1;min-width:0">'
-      +'<div class="wp-item-name">'+wp.name+wpDistLabel(wp)+'</div>'
+      +'<div class="wp-item-name">'+wp.name+'</div>'
       +'<div class="wp-item-coords">'+fmt(wp.lat)+', '+fmt(wp.lon)+'</div>'
       +(wp.comment?'<div class="wp-item-comment">'+wp.comment+'</div>':'')
       +'</div>'
-      +'<button class="wp-item-edit" onclick="event.stopPropagation();shareWp('+wp.id+')" title="Partager" style="font-size:13px">\u{1F4E4}</button>'
-      +'<button class="wp-item-edit" onclick="event.stopPropagation();editWp('+wp.id+')" title="\u00c9diter">\u270e</button>'
-      +'<button class="wp-item-del" onclick="event.stopPropagation();deleteWp('+wp.id+')">\u2715</button>'
+      +'<button class="wp-item-edit" onclick="editWp('+wp.id+')" title="\u00c9diter">\u270e</button>'
+      +'<button class="wp-item-del" onclick="deleteWp('+wp.id+')">\u2715</button>'
       +'</div>';
   }).join('');
 }
@@ -3429,13 +3393,7 @@ function toggleWpPanel(){
 // ══════════════════════════════════════════════════════
 //  EXPORT GEOJSON
 // ══════════════════════════════════════════════════════
-function exportGeoJSON() {
-  if(!state.waypoints.length){toast('Aucun waypoint à exporter');return;}
-  const gj={type:'FeatureCollection',features:state.waypoints.map(wp=>({type:'Feature',geometry:{type:'Point',coordinates:[wp.lon,wp.lat]},properties:{name:wp.name,comment:wp.comment||'',photo_count:(wp.photos||[]).length,timestamp:wp.timestamp,id:wp.id}}))};
-  const url=URL.createObjectURL(new Blob([JSON.stringify(gj,null,2)],{type:'application/json'}));
-  const a=document.createElement('a');a.href=url;a.download=`waypoints_${new Date().toISOString().slice(0,10)}.geojson`;a.click();URL.revokeObjectURL(url);
-  toast(`${state.waypoints.length} WP exportés en GeoJSON`);
-}
+
 
 // ══════════════════════════════════════════════════════
 //  EXPORT KMZ
@@ -3616,76 +3574,14 @@ function updateTraceBanner(){
 async function saveTrace(){
   if(!state.traces)state.traces=[];
   const n=state.traces.length+1;
-  const defaultName='Tracé-'+n;
-  // Demander le nom
-  const nom=window.prompt('Nom du tracé :',defaultName);
-  if(nom===null){toast('Tracé annulé');return;} // annuler = ne pas sauvegarder
-  const traceName=nom.trim()||defaultName;
-  const trace={id:Date.now(),projectId:state.currentProjectId,name:traceName,points:state.tracePts.slice(),timestamp:new Date().toISOString(),color:state.traceColor||'#ff3d00',weight:state.traceWeight||4};
+  const trace={id:Date.now(),projectId:state.currentProjectId,name:`Tracé-${n}`,points:state.tracePts.slice(),timestamp:new Date().toISOString(),color:state.traceColor||'#ff3d00',weight:state.traceWeight||4};
   state.traces.push(trace);
   if(state.currentProjectId){
     await dbPut('traces',trace);
     const p=await dbGet('projects',state.currentProjectId);
     if(p){p.traceCount=state.traces.length;await dbPut('projects',p);}
   }
-  toast(traceName+' enregistré — '+trace.points.length+' pts');
-}
-function toggleTracePanel(){
-  const panel=document.getElementById('trace-panel');
-  if(!panel){
-    // Créer le panel à la volée
-    const div=document.createElement('div');
-    div.id='trace-panel';
-    div.className='';
-    div.style.cssText='position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.7);display:flex;align-items:flex-end';
-    div.innerHTML='<div style="background:var(--panel);width:100%;max-height:70dvh;overflow-y:auto;border-radius:12px 12px 0 0;padding:16px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-      +'<span style="font-size:12px;color:var(--accent);letter-spacing:1px;text-transform:uppercase">Tracés enregistrés</span>'
-      +'<button onclick="document.getElementById(\'trace-panel\').remove()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">\u2715</button>'
-      +'</div>'
-      +'<div id="trace-list"></div>'
-      +'</div>';
-    document.body.appendChild(div);
-    div.addEventListener('click',function(e){if(e.target===div)div.remove();});
-  }
-  renderTraceList();
-  document.getElementById('trace-panel').style.display='flex';
-}
-function renderTraceList(){
-  const list=document.getElementById('trace-list');
-  if(!list)return;
-  if(!state.traces||!state.traces.length){
-    list.innerHTML='<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">Aucun tracé enregistré</div>';
-    return;
-  }
-  list.innerHTML=state.traces.map(function(tr){
-    const pts=tr.points||[];
-    var dist=0;
-    for(var i=1;i<pts.length;i++){
-      var R=6371000,toRad=function(x){return x*Math.PI/180;};
-      var dLat=toRad(pts[i].lat-pts[i-1].lat),dLon=toRad(pts[i].lon-pts[i-1].lon);
-      var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(pts[i-1].lat))*Math.cos(toRad(pts[i].lat))*Math.sin(dLon/2)*Math.sin(dLon/2);
-      dist+=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-    }
-    const date=tr.timestamp?new Date(tr.timestamp).toLocaleDateString('fr-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-    return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
-      +'<div style="width:14px;height:14px;border-radius:2px;background:'+tr.color+';flex-shrink:0"></div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:12px;color:var(--text);font-weight:bold">'+tr.name+'</div>'
-      +'<div style="font-size:10px;color:var(--muted)">'+fmtDist(dist)+' · '+pts.length+' pts · '+date+'</div>'
-      +'</div>'
-      +'<button onclick="deleteTrace('+tr.id+')" style="background:none;border:none;color:var(--danger);font-size:14px;cursor:pointer;padding:4px 8px">\u2715</button>'
-      +'</div>';
-  }).join('');
-}
-async function deleteTrace(id){
-  if(!confirm('Supprimer ce tracé ?'))return;
-  state.traces=state.traces.filter(function(t){return t.id!==id;});
-  await dbDelete('traces',id);
-  // Retirer de la carte
-  // (les polylines sont reconstruites au chargement du projet — un reload suffira)
-  renderTraceList();
-  toast('Tracé supprimé');
+  toast(`Tracé-${n} enregistré — ${trace.points.length} pts`);
 }
 async function exportAllGPX(){
   if(!state.traces||!state.traces.length){toast('Aucun tracé enregistré');return;}
@@ -3725,6 +3621,220 @@ function toggleExportMenu(){
   if(m.classList.contains('open')){
     setTimeout(()=>document.addEventListener('click',()=>m.classList.remove('open'),{once:true}),50);
   }
+}
+// ══════════════════════════════════════════════════════
+//  EXPORT SHAPEFILE
+// ══════════════════════════════════════════════════════
+function shpWriteInt32LE(buf,off,val){buf[off]=val&255;buf[off+1]=(val>>8)&255;buf[off+2]=(val>>16)&255;buf[off+3]=(val>>24)&255;}
+function shpWriteInt32BE(buf,off,val){buf[off]=(val>>24)&255;buf[off+1]=(val>>16)&255;buf[off+2]=(val>>8)&255;buf[off+3]=val&255;}
+function shpWriteDouble(buf,off,val){const dv=new DataView(buf.buffer||new ArrayBuffer(8));if(!(buf.buffer)){const tmp=new Uint8Array(8);const dv2=new DataView(tmp.buffer);dv2.setFloat64(0,val,true);buf.set(tmp,off);}else{dv.setFloat64(off,val,true);}}
+function shpWriteDoubleAt(view,off,val){view.setFloat64(off,val,true);}
+
+function buildSHPPoint(wps){
+  // shpType=1 (Point)
+  const recSize=28; // 8 header + 4 type + 8 x + 8 y
+  const fileBytes=100+wps.length*(8+recSize);
+  const shp=new DataView(new ArrayBuffer(fileBytes));
+  const shx=new DataView(new ArrayBuffer(100+wps.length*8));
+  // File header SHP
+  shp.setInt32(0,9994,false);shp.setInt32(24,(fileBytes/2),false);shp.setInt32(28,1000,true);shp.setInt32(32,1,true);
+  // BBox (calculé)
+  const lats=wps.map(w=>w.lat),lons=wps.map(w=>w.lon);
+  const minX=Math.min(...lons),maxX=Math.max(...lons),minY=Math.min(...lats),maxY=Math.max(...lats);
+  shp.setFloat64(36,minX,true);shp.setFloat64(44,minY,true);shp.setFloat64(52,maxX,true);shp.setFloat64(60,maxY,true);
+  // File header SHX
+  const shxBytes=100+wps.length*8;
+  shx.setInt32(0,9994,false);shx.setInt32(24,shxBytes/2,false);shx.setInt32(28,1000,true);shx.setInt32(32,1,true);
+  shx.setFloat64(36,minX,true);shx.setFloat64(44,minY,true);shx.setFloat64(52,maxX,true);shx.setFloat64(60,maxY,true);
+  // Records
+  let shpOff=100,shxOff=100;
+  for(let i=0;i<wps.length;i++){
+    const w=wps[i];
+    shp.setInt32(shpOff,i+1,false);          // rec num BE
+    shp.setInt32(shpOff+4,recSize/2,false);  // content len in 16-bit words BE
+    shp.setInt32(shpOff+8,1,true);            // shape type LE
+    shp.setFloat64(shpOff+12,w.lon,true);
+    shp.setFloat64(shpOff+20,w.lat,true);
+    shx.setInt32(shxOff,shpOff/2,false);
+    shx.setInt32(shxOff+4,recSize/2,false);
+    shpOff+=8+recSize;shxOff+=8;
+  }
+  return{shp:new Uint8Array(shp.buffer),shx:new Uint8Array(shx.buffer)};
+}
+
+function buildSHPPolyline(traces){
+  // shpType=3 (Polyline)
+  const parts=[];
+  traces.forEach(tr=>{parts.push(tr.points.map(p=>({x:p.lon,y:p.lat})));});
+  const numParts=parts.length;
+  const totalPts=parts.reduce((s,p)=>s+p.length,0);
+  const contentLen=44+4*numParts+16*totalPts; // octets du contenu (sans header rec)
+  const fileBytes=100+numParts*(8+contentLen); // approximatif, recalculé par trace
+  // Calcul précis
+  let recBytes=0;
+  traces.forEach(tr=>{recBytes+=8+(44+4+16*tr.points.length);});
+  const fileBytesExact=100+recBytes;
+  const shp=new DataView(new ArrayBuffer(fileBytesExact));
+  const shxBytes=100+traces.length*8;
+  const shx=new DataView(new ArrayBuffer(shxBytes));
+  // BBox global
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  traces.forEach(tr=>tr.points.forEach(p=>{if(p.lon<minX)minX=p.lon;if(p.lon>maxX)maxX=p.lon;if(p.lat<minY)minY=p.lat;if(p.lat>maxY)maxY=p.lat;}));
+  // Headers
+  shp.setInt32(0,9994,false);shp.setInt32(24,fileBytesExact/2,false);shp.setInt32(28,1000,true);shp.setInt32(32,3,true);
+  shp.setFloat64(36,minX,true);shp.setFloat64(44,minY,true);shp.setFloat64(52,maxX,true);shp.setFloat64(60,maxY,true);
+  shx.setInt32(0,9994,false);shx.setInt32(24,shxBytes/2,false);shx.setInt32(28,1000,true);shx.setInt32(32,3,true);
+  shx.setFloat64(36,minX,true);shx.setFloat64(44,minY,true);shx.setFloat64(52,maxX,true);shx.setFloat64(60,maxY,true);
+  let shpOff=100,shxOff=100;
+  for(let i=0;i<traces.length;i++){
+    const tr=traces[i];const pts=tr.points;const n=pts.length;
+    const contentBytes=44+4*1+16*n; // 1 part par tracé
+    const contentWords=contentBytes/2;
+    // BBox tracé
+    let tx1=Infinity,tx2=-Infinity,ty1=Infinity,ty2=-Infinity;
+    pts.forEach(p=>{if(p.lon<tx1)tx1=p.lon;if(p.lon>tx2)tx2=p.lon;if(p.lat<ty1)ty1=p.lat;if(p.lat>ty2)ty2=p.lat;});
+    shx.setInt32(shxOff,shpOff/2,false);
+    shx.setInt32(shxOff+4,contentWords,false);
+    shp.setInt32(shpOff,i+1,false);
+    shp.setInt32(shpOff+4,contentWords,false);
+    shp.setInt32(shpOff+8,3,true);       // shape type
+    shp.setFloat64(shpOff+12,tx1,true);
+    shp.setFloat64(shpOff+20,ty1,true);
+    shp.setFloat64(shpOff+28,tx2,true);
+    shp.setFloat64(shpOff+36,ty2,true);
+    shp.setInt32(shpOff+44,1,true);      // numParts
+    shp.setInt32(shpOff+48,n,true);      // numPoints
+    shp.setInt32(shpOff+52,0,true);      // part[0] starts at index 0
+    let ptOff=shpOff+56;
+    pts.forEach(p=>{shp.setFloat64(ptOff,p.lon,true);shp.setFloat64(ptOff+8,p.lat,true);ptOff+=16;});
+    shpOff+=8+contentBytes;shxOff+=8;
+  }
+  return{shp:new Uint8Array(shp.buffer),shx:new Uint8Array(shx.buffer)};
+}
+
+function buildDBF(records,fields){
+  // fields = [{name,type,len,dec}]  type: C=char, N=numeric
+  const hdrSize=32+fields.length*32+1;
+  const recSize=1+fields.reduce((s,f)=>s+f.len,0);
+  const buf=new Uint8Array(hdrSize+records.length*recSize);
+  const enc=new TextEncoder();
+  buf[0]=3;buf[1]=125;buf[2]=6;buf[3]=12; // version + date
+  const writeInt16LE=(o,v)=>{buf[o]=v&255;buf[o+1]=(v>>8)&255;};
+  const writeInt32LE=(o,v)=>{buf[o]=v&255;buf[o+1]=(v>>8)&255;buf[o+2]=(v>>16)&255;buf[o+3]=(v>>24)&255;};
+  writeInt32LE(4,records.length);
+  writeInt16LE(8,hdrSize);
+  writeInt16LE(10,recSize);
+  // Field descriptors
+  let fOff=32;
+  fields.forEach(f=>{
+    const nm=enc.encode(f.name.substring(0,10).padEnd(11,'\0'));
+    buf.set(nm,fOff);
+    buf[fOff+11]=f.type.charCodeAt(0);
+    buf[fOff+16]=f.len;
+    buf[fOff+17]=f.dec||0;
+    fOff+=32;
+  });
+  buf[fOff]=0x0D; // header terminator
+  // Records
+  let rOff=hdrSize;
+  records.forEach(rec=>{
+    buf[rOff]=0x20; // deletion flag (space = active)
+    let vOff=rOff+1;
+    fields.forEach(f=>{
+      const val=String(rec[f.name]||'');
+      const bytes=enc.encode(val.substring(0,f.len));
+      if(f.type==='N'){
+        // right-justify
+        const padded=val.substring(0,f.len).padStart(f.len,' ');
+        buf.set(enc.encode(padded).slice(0,f.len),vOff);
+      } else {
+        // left-justify, pad with spaces
+        const padded=val.substring(0,f.len).padEnd(f.len,' ');
+        buf.set(enc.encode(padded).slice(0,f.len),vOff);
+      }
+      vOff+=f.len;
+    });
+    rOff+=recSize;
+  });
+  buf[rOff]=0x1A; // EOF
+  return buf;
+}
+
+const WGS84_PRJ='GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+
+function haversineKm(a,b){const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180,s=Math.sin(dLat/2),c=Math.sin(dLon/2);const h=s*s+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*c*c;return R*2*Math.asin(Math.sqrt(h));}
+
+async function exportSHP(){
+  if(typeof JSZip==='undefined'){toast('JSZip non chargé');return;}
+  const hasWp=state.waypoints&&state.waypoints.length>0;
+  const hasTr=state.traces&&state.traces.length>0;
+  if(!hasWp&&!hasTr){toast('Aucune donnée à exporter');return;}
+  toast('Génération Shapefile…',3000);
+  const zip=new JSZip();
+  const prj=new TextEncoder().encode(WGS84_PRJ);
+  const now=new Date().toISOString().slice(0,10);
+
+  if(hasWp){
+    const {shp,shx}=buildSHPPoint(state.waypoints);
+    const fields=[
+      {name:'NAME',type:'C',len:60,dec:0},
+      {name:'CATEGORY',type:'C',len:20,dec:0},
+      {name:'COMMENT',type:'C',len:254,dec:0},
+      {name:'TIMESTAMP',type:'C',len:24,dec:0},
+      {name:'SHAPE',type:'C',len:12,dec:0},
+      {name:'COLOR',type:'C',len:10,dec:0},
+      {name:'LAT',type:'N',len:12,dec:7},
+      {name:'LON',type:'N',len:13,dec:7}
+    ];
+    const records=state.waypoints.map(w=>({
+      NAME:w.name||'',
+      CATEGORY:w.cat||'observation',
+      COMMENT:w.comment||'',
+      TIMESTAMP:(w.timestamp||'').slice(0,24),
+      SHAPE:w.shape||'circle',
+      COLOR:w.color||'#ff6d00',
+      LAT:w.lat.toFixed(7),
+      LON:w.lon.toFixed(7)
+    }));
+    const dbf=buildDBF(records,fields);
+    const wf=zip.folder('waypoints');
+    wf.file('waypoints.shp',shp);
+    wf.file('waypoints.shx',shx);
+    wf.file('waypoints.dbf',dbf);
+    wf.file('waypoints.prj',prj);
+  }
+
+  if(hasTr){
+    const validTr=state.traces.filter(t=>t.points&&t.points.length>1);
+    if(validTr.length){
+      const {shp,shx}=buildSHPPolyline(validTr);
+      const fields=[
+        {name:'NAME',type:'C',len:60,dec:0},
+        {name:'TIMESTAMP',type:'C',len:24,dec:0},
+        {name:'PTS',type:'N',len:6,dec:0},
+        {name:'DIST_KM',type:'N',len:10,dec:3},
+        {name:'COLOR',type:'C',len:10,dec:0}
+      ];
+      const records=validTr.map(t=>{
+        let dist=0;for(let i=1;i<t.points.length;i++)dist+=haversineKm(t.points[i-1],t.points[i]);
+        return{NAME:t.name||'Tracé',TIMESTAMP:(t.timestamp||'').slice(0,24),PTS:t.points.length,DIST_KM:dist.toFixed(3),COLOR:t.color||'#ff3d00'};
+      });
+      const dbf=buildDBF(records,fields);
+      const tf=zip.folder('traces');
+      tf.file('traces.shp',shp);
+      tf.file('traces.shx',shx);
+      tf.file('traces.dbf',dbf);
+      tf.file('traces.prj',prj);
+    }
+  }
+
+  const blob=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='navenza_shp_'+now+'.zip';a.click();URL.revokeObjectURL(url);
+  const msg=[]
+  if(hasWp)msg.push(state.waypoints.length+' WP');
+  if(hasTr&&state.traces.filter(t=>t.points&&t.points.length>1).length)msg.push(state.traces.filter(t=>t.points&&t.points.length>1).length+' tracé(s)');
+  toast('SHP exporté — '+msg.join(' + '));
 }
 function exportGeoJSON(){
   if(!state.waypoints.length){toast('Aucun waypoint à exporter');return;}
