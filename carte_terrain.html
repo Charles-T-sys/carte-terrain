@@ -1749,8 +1749,8 @@
         self._srcLevel     = initIdx;
         self._srcFullW     = ifds[0].width;
 
-        // Bounds
-        var bounds = getBoundsFromTags(ifd);
+        // Bounds — toujours depuis l'IFD principal (index 0)
+        var bounds = getBoundsFromTags(ifds[0]);
         if (!bounds) throw new Error('Géoréférencement introuvable');
         self._bounds = bounds;
         window._dbgLayer = self; // debug
