@@ -1725,7 +1725,13 @@
         var ifds = UTIF.decode(self._buffer);
         if (!ifds || !ifds.length) throw new Error('Aucun IFD dans le TIFF');
 
-        var ifd = ifds[0];
+        // Stocker tous les IFDs (overview 0=pleine res, 1,2,3...= réductions)
+        self._ifds   = ifds;
+        self._buffer2 = self._buffer;
+
+        // Décoder uniquement l'overview la plus petite pour init rapide
+        var initIdx = ifds.length > 3 ? ifds.length - 2 : 0;
+        var ifd = ifds[initIdx];
         UTIF.decodeImage(self._buffer, ifd, ifds);
         var rgba = UTIF.toRGBA8(ifd);
 
@@ -1733,14 +1739,15 @@
         if (!w || !h)   throw new Error('Dimensions invalides: ' + w + 'x' + h);
         if (!rgba || !rgba.length) throw new Error('Pixels vides');
 
-        // Canvas source
         var src = document.createElement('canvas');
         src.width = w; src.height = h;
         var ctx = src.getContext('2d');
         var imgData = ctx.createImageData(w, h);
         imgData.data.set(rgba);
         ctx.putImageData(imgData, 0, 0);
-        self._srcCanvas = src;
+        self._srcCanvas    = src;
+        self._srcLevel     = initIdx;
+        self._srcFullW     = ifds[0].width;
 
         // Bounds
         var bounds = getBoundsFromTags(ifd);
@@ -1801,7 +1808,34 @@
       var br  = map.latLngToLayerPoint(this._bounds.getSouthEast());
       var pxW = Math.max(1, Math.round(Math.abs(br.x - tl.x)));
       var pxH = Math.max(1, Math.round(Math.abs(br.y - tl.y)));
-      var dpr = Math.min(window.devicePixelRatio || 1, 2); // plafonner à 2× — évite OOM sur Retina
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      // Choisir le niveau d'overview optimal pour la résolution d'affichage
+      var self     = this;
+      var ifds     = this._ifds;
+      var neededW  = pxW * dpr;
+      var bestIdx  = 0;
+      if (ifds && ifds.length > 1) {
+        for (var i = ifds.length - 1; i >= 0; i--) {
+          if (ifds[i].width >= neededW * 0.9) { bestIdx = i; break; }
+        }
+      }
+      // Recharger le canvas source si le niveau change
+      if (ifds && bestIdx !== this._srcLevel) {
+        var ifd2 = ifds[bestIdx];
+        UTIF.decodeImage(this._buffer2, ifd2, ifds);
+        var rgba2 = UTIF.toRGBA8(ifd2);
+        if (rgba2 && rgba2.length) {
+          var src2 = document.createElement('canvas');
+          src2.width = ifd2.width; src2.height = ifd2.height;
+          var ctx2 = src2.getContext('2d');
+          var id2  = ctx2.createImageData(ifd2.width, ifd2.height);
+          id2.data.set(rgba2);
+          ctx2.putImageData(id2, 0, 0);
+          this._srcCanvas = src2;
+          this._srcLevel  = bestIdx;
+        }
+      }
 
       // Limite WebKit iOS : max 4096px par dimension
       // Downscale proportionnel pour garder les proportions
