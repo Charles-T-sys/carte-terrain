@@ -1982,8 +1982,10 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 
 /* ── CARTE ── */
 #map-wrap{flex:1;position:relative;overflow:hidden;background:#0d150d;display:none}
+#map-wrap.index-mode{background:#f4f1e8}
 #map{position:absolute;inset:0;background:transparent !important;z-index:10}
 .leaflet-container{background:#0d150d !important}
+#map-wrap.index-mode .leaflet-container{background:#f4f1e8 !important}
 
 /* Marqueurs */
 .pos-marker{width:20px;height:20px;border-radius:50%;background:#2196f3;border:3px solid white;box-shadow:0 0 0 3px rgba(33,150,243,.4),0 2px 8px rgba(0,0,0,.5)}
@@ -2750,6 +2752,7 @@ function closeConfirm() {
 async function goHome() {
   if (state.currentProjectId) await syncProjectMeta();
   if (state.map) { state.map.remove(); state.map = null; state.cogLayer = null; state.indexLayer = null; state.posMarker = null; state.posCircle = null; state.wpMarkers = []; }
+  document.getElementById('map-wrap')?.classList.remove('index-mode');
   if (state.tracing) { state.tracing = false; document.getElementById('btn-trace').classList.remove('recording'); }
   state.traces = [];
   state.currentProjectId = null; state.waypoints = []; state.tracePts = []; state.activeSectorId = null;
@@ -4044,12 +4047,14 @@ async function swapSector(sectorId) {
   // ══ Mode "Vue d'ensemble" ══
   if (sectorId === 'INDEX') {
     state.activeSectorId = 'INDEX';
+    document.getElementById('map-wrap').classList.add('index-mode');
     showIndexLayer();
     _updateSectorBtn();
     return;
   }
 
   // ══ Mode COG sectoriel ══
+  document.getElementById('map-wrap').classList.remove('index-mode');
   const mapDoc = await dbGet('maps', state.currentProjectId);
   const sector = mapDoc?.sectors?.find(s => s.id === sectorId);
   if (!sector) { toast('Secteur introuvable'); return; }
