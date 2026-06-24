@@ -1986,6 +1986,8 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative
 #map{position:absolute;inset:0;background:transparent !important;z-index:10}
 .leaflet-container{background:#0d150d !important}
 #map-wrap.index-mode .leaflet-container{background:#f4f1e8 !important}
+.lac-label{background:transparent;border:none;box-shadow:none;color:#1a4a7a;font-size:10px;font-weight:600;text-shadow:0 0 3px #f4f1e8,0 0 3px #f4f1e8,0 0 5px #f4f1e8;pointer-events:none;white-space:nowrap}
+.lac-label::before{display:none}
 
 /* Marqueurs */
 .pos-marker{width:20px;height:20px;border-radius:50%;background:#2196f3;border:3px solid white;box-shadow:0 0 0 3px rgba(33,150,243,.4),0 2px 8px rgba(0,0,0,.5)}
@@ -4132,6 +4134,14 @@ function showIndexLayer() {
           }
         });
         layer.bindTooltip(props.nom, { sticky: true });
+      } else if (props.cat === 'lac' && props.nom) {
+        // Étiquette permanente centrée sur le plan d'eau
+        layer.bindTooltip(props.nom, {
+          permanent: true,
+          direction: 'center',
+          className: 'lac-label',
+          interactive: false
+        });
       } else if (props.nom) {
         layer.bindTooltip(props.nom, { sticky: true });
       }
@@ -4208,6 +4218,13 @@ window.addEventListener('resize',()=>state.map?.invalidateSize());
   showScreen('home');
   await renderProjectList();
 })();
+
+// ── Service Worker (offline) ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/carte-terrain/sw.js')
+    .then(r => console.log('SW enregistré:', r.scope))
+    .catch(e => console.warn('SW échec:', e));
+}
 </script>
 </body>
 </html>
