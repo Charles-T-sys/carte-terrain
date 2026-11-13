@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet.min.css">
 <link rel="stylesheet" href="css/styles.css">
-<script>window.NV_HTML_VERSION = '5.0.0';
+<script>window.NV_HTML_VERSION = '5.1.0';
 // Filet de sécurité : si un fichier de l'app manque (mise à jour interrompue hors réseau), le dire clairement.
 setTimeout(function () {
   if (window.__NV) return;
@@ -27,6 +27,9 @@ setTimeout(function () {
 <script src="lib/utif.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/index-geojson.js"></script>
+<script src="js/coords.js"></script>
+<script src="js/symbols.js"></script>
+<script src="js/importer.js"></script>
 <script src="js/db.js"></script>
 <script src="js/export.js"></script>
 </head>
@@ -130,12 +133,13 @@ setTimeout(function () {
     <div class="map-side" id="map-side">
       <button class="ibtn" data-act="zoomIn" aria-label="Zoom avant"><svg class="i lg"><use href="#i-zin"/></svg></button>
       <button class="ibtn" data-act="zoomOut" aria-label="Zoom arrière"><svg class="i lg"><use href="#i-zout"/></svg></button>
+      <button class="ibtn" data-act="viseur" id="m-viseur" aria-label="Viseur avec coordonnées"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 1v6M12 17v6M1 12h6M17 12h6"/></svg></button>
       <button class="ibtn" data-act="layersSheet" aria-label="Calques"><svg class="i"><use href="#i-layers"/></svg></button>
       <button class="ibtn compass-btn" data-act="compass" id="m-compass" aria-label="Boussole"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 2 16 12H8z" fill="#E5533D"/><path d="M12 22 8 12h8z" fill="currentColor" opacity=".5"/></svg><small id="m-compass-lbl">N</small></button>
       <button class="ibtn" data-act="follow" id="m-follow" aria-label="Suivre ma position"><svg class="i"><use href="#i-locate"/></svg></button>
     </div>
     <div class="map-bottom" id="map-bottom">
-      <div class="coords"><span id="m-coords">Position GPS en attente…</span><span id="m-acc" style="color:var(--ok)"></span></div>
+      <button class="coords" data-act="cycleFmt" aria-label="Changer le format des coordonnées" style="border:none;background:transparent;color:var(--text);padding:4px 0;text-align:left"><span id="m-coords">Position GPS en attente…</span><span id="m-acc" style="color:var(--ok)"></span></button>
       <div class="coords sub"><span id="m-speed"></span><span id="m-head"></span><span id="m-count"></span></div>
       <div class="actions3">
         <button class="act" data-act="addPoint"><svg class="i"><use href="#i-pin"/></svg>Point</button>
@@ -195,6 +199,7 @@ setTimeout(function () {
 </div>
 
 <input type="file" id="file-import" accept=".pdf,.tif,.tiff,application/pdf,image/tiff" multiple class="hidden">
+<input type="file" id="file-layer" accept=".geojson,.json,.kml,.kmz,.gpx,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/gpx+xml" class="hidden">
 <input type="file" id="file-photo" accept="image/*" multiple class="hidden">
 
 <script src="js/app.js"></script>

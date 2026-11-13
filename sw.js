@@ -1,14 +1,14 @@
-// sw.js — NAVenza MAP v3 (navenza-v5)
+// sw.js — NAVenza MAP 5.1 (navenza-v6)
 // Hors ligne d'abord : tous les fichiers de l'app sont pré-cachés à l'installation.
 // Une nouvelle version ne s'installe QUE par un nouveau CACHE_NAME : la page et ses scripts
 // viennent toujours du même lot (pas de mélange ancienne page / nouveaux scripts).
-const CACHE_NAME = 'navenza-v5';
+const CACHE_NAME = 'navenza-v6';
 const BASE = new URL('./', self.location).pathname;   // '/carte-terrain/' sur GitHub Pages
 const HTML = BASE + 'carte_terrain.html';
 const CORE = [
   'carte_terrain.html', 'manifest.json',
   'css/styles.css',
-  'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js',
+  'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
   'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
   'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2',
   'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2',
