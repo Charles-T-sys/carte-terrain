@@ -137,8 +137,8 @@ body[data-theme="sombre"] #map, body[data-theme="nuit"] #map { background: #1d26
 .banner.info .lbl { white-space: normal; color: var(--text); font-size: 15px; }
 .rec-dot { width: 14px; height: 14px; border-radius: 7px; background: var(--rec); flex: none; animation: blink 1.2s infinite; }
 @keyframes blink { 50% { opacity: .3; } }
-.map-side { position: absolute; z-index: 500; right: 10px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; }
-.map-side .ibtn { width: 60px; height: 60px; border-radius: 16px; }
+.map-side { position: absolute; z-index: 500; right: 10px; top: 50%; transform: translateY(-46%); display: flex; flex-direction: column; gap: 8px; }
+.map-side .ibtn { width: 58px; height: 58px; border-radius: 16px; }
 .map-side .ibtn small { font-size: 11px; font-weight: 700; display: block; line-height: 1; }
 .compass-btn { flex-direction: column; gap: 0; }
 .map-bottom { position: absolute; z-index: 500; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--border);
@@ -229,3 +229,9 @@ dl.kv dd { margin: 0; }
 .infolder #lib-import { width: 52px; padding: 0; }
 .infolder #lib-import .lbl { display: none; }
 .infolder #lib-title { font-size: 23px; }
+button.coords { width: 100%; font-family: 'PlexMono', monospace; font-size: 14px; }
+.symgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.symbtn { min-height: 76px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 2px; font-size: 12px; line-height: 1.15; text-align: center; }
+.symbtn.on { border: 3px solid var(--accent); background: var(--accent-soft); }
+.symbtn svg { width: 34px; height: 34px; }
+.chip svg { flex: none; }

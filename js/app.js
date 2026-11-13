@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.0.0';
+  var APP_VERSION = '5.1.0';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -10,7 +10,7 @@
   function num(n, d) { return n.toFixed(d).replace('.', ','); }
   function fmtDist(m) { return m < 1000 ? Math.round(m) + ' m' : num(m / 1000, m < 10000 ? 2 : 1) + ' km'; }
   function fmtSize(b) { return b > 1048576 ? num(b / 1048576, 1) + ' Mo' : Math.max(1, Math.round(b / 1024)) + ' ko'; }
-  function fmtLL(lat, lon) { return num(Math.abs(lat), 5) + (lat >= 0 ? ' N' : ' S') + '  ' + num(Math.abs(lon), 5) + (lon >= 0 ? ' E' : ' O'); }
+  function fmtLL(lat, lon, f) { return NVCoords.format(lat, lon, f || S.coordFmt); }
   function fmtDate(iso) { if (!iso) return '—'; try { return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)); } catch (e) { return iso; } }
   function fmtDay(iso) { if (!iso) return ''; try { return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' }).format(new Date(iso)); } catch (e) { return iso.slice(0, 10); } }
   function pl(n, a, b) { return n + ' ' + (n > 1 ? (b || a + 's') : a); }
@@ -32,26 +32,9 @@
   function toast(msg, ms) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, ms || 2400); }
   window.toast = toast; // utilisé par layers.js
 
-  var CATS = [
-    { id: 'observation', label: 'Observation', color: '#ff6d00' }, { id: 'faune', label: 'Faune', color: '#4caf50' },
-    { id: 'peche', label: 'Pêche', color: '#2196f3' }, { id: 'camping', label: 'Camp', color: '#ffc107' },
-    { id: 'danger', label: 'Danger', color: '#e53935' }, { id: 'infra', label: 'Infra', color: '#9e9e9e' }];
-  var CAT = {}; CATS.forEach(function (c) { CAT[c.id] = c; });
-  var SHAPES = ['circle', 'square', 'triangle', 'diamond', 'star', 'cross', 'flag', 'house'];
   var LCOLORS = ['#FFB547', '#6EDB98', '#7FC8F8', '#FF7A59', '#C792EA', '#F2E85C', '#5AD1C8', '#FF9EC4'];
   var FCOLORS = ['#FFB547', '#7FC8F8', '#6EDB98', '#FF9EC4', '#C792EA', '#F2E85C', '#5AD1C8', '#FF7A59'];
-  function shapeSvg(shape, color, size) {
-    var c = color || '#ff6d00', s = {
-      circle: '<circle cx="12" cy="12" r="10" fill="' + c + '" stroke="white" stroke-width="2"/>',
-      square: '<rect x="2" y="2" width="20" height="20" rx="2" fill="' + c + '" stroke="white" stroke-width="2"/>',
-      triangle: '<polygon points="12,2 22,22 2,22" fill="' + c + '" stroke="white" stroke-width="2"/>',
-      diamond: '<polygon points="12,2 22,12 12,22 2,12" fill="' + c + '" stroke="white" stroke-width="2"/>',
-      star: '<polygon points="12,1 14.9,8.5 22.5,8.5 16.8,13.5 19,21 12,16.5 5,21 7.2,13.5 1.5,8.5 9.1,8.5" fill="' + c + '" stroke="white" stroke-width="1.5"/>',
-      cross: '<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="' + c + '" stroke="white" stroke-width="1.5"/>',
-      flag: '<rect x="5" y="16" width="2.5" height="7" fill="' + c + '" stroke="white" stroke-width="1"/><path d="M7.5 2 L20 7 L7.5 13 Z" fill="' + c + '" stroke="white" stroke-width="1.5"/>',
-      house: '<polygon points="12,2 22,10 22,22 15,22 15,15 9,15 9,22 2,22 2,10" fill="' + c + '" stroke="white" stroke-width="2"/>' };
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size || 24) + '" height="' + (size || 24) + '" viewBox="0 0 24 24" aria-hidden="true">' + (s[shape] || s.circle) + '</svg>';
-  }
+  function wpIcon(w, size) { return NVSym.forWp(w, size); }
   function fpIcon(c) {
     if (!c.footprint || !c.bbox) return '<span class="fp" aria-hidden="true"></span>';
     var b = c.bbox, w = b[2] - b[0], h = b[3] - b[1], k = 30 / Math.max(w, h * 1.5), pts = c.footprint.map(function (p) { return (5 + (p[1] - b[0]) * k + (30 - w * k) / 2).toFixed(1) + ',' + (5 + (b[3] - p[0]) * k * 1.5 + (30 - h * k * 1.5) / 2).toFixed(1); }).join(' ');
@@ -61,7 +44,7 @@
   // ══════════════ État ══════════════
   var S = {
     folders: [], cartes: [], layers: [], wps: [], traces: [],
-    tab: 'cartes', prevTab: 'cartes', libFolder: null, libQuery: '', ptsMode: 'points', ptsQuery: '', ptsCat: '',
+    tab: 'cartes', prevTab: 'cartes', libFolder: null, libQuery: '', ptsMode: 'points', ptsQuery: '', ptsSym: '', coordFmt: 'dd', viseur: false, employee: '', officeEmail: 'faune@terfa.ca',
     pos: null, acc: null, speed: null, course: null, heading: null, prevGPS: null, gpsId: null, lastHereRender: null,
     map: null, carte: null, carteLayer: null, wpGroup: null, trGroup: null, posMarker: null, posCircle: null,
     follow: false, compassOn: false, navTarget: null,
@@ -90,6 +73,7 @@
 
   // ══════════════ Feuilles (bas d'écran) ══════════════
   function openSheet(html, fns) {
+    clearTimeout(toastTimer); $('#toast').classList.remove('show');
     S.sheetFns = fns || [];
     $('#sheet').innerHTML = '<div class="grip"></div>' + html;
     $('#sheet-bg').classList.add('open'); $('#sheet').classList.add('open');
@@ -287,7 +271,7 @@
   }
   var _hdrT = null;
   function onMapMove() {
-    if (S.mire) updateMire();
+    if (S.mire) updateMire(); else if (S.viseur) updateCoordsBar();
     clearTimeout(_hdrT); _hdrT = setTimeout(updateMapHeader, 300);
   }
   function renderOverlays() {
@@ -300,7 +284,7 @@
     });
     S.wps.forEach(function (w) {
       if (!layerVisible(w.layerId)) return;
-      var icon = L.divIcon({ className: '', html: '<div class="wp-icon' + (S.navTarget === w.id ? ' target' : '') + '">' + shapeSvg(w.shape, w.color, 28) + '<div class="wp-label">' + esc(w.name) + '</div></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+      var icon = L.divIcon({ className: '', html: '<div class="wp-icon' + (S.navTarget === w.id ? ' target' : '') + '">' + wpIcon(w, 28) + '<div class="wp-label">' + esc(w.name) + '</div></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
       L.marker([w.lat, w.lon], { icon: icon, keyboard: false }).on('click', function () { if (S.mire) return; openWp(w.id, 'map'); }).addTo(S.wpGroup);
     });
     if (S.tracing && S.traceLine) S.traceLine.addTo(S.map);
@@ -318,7 +302,8 @@
     if (head) { head.classList.toggle('hidden', h == null); if (h != null) head.style.transform = 'rotate(' + h + 'deg)'; }
   }
   function updateCoordsBar() {
-    if (!S.pos) { $('#m-coords').textContent = 'Position GPS en attente…'; $('#m-acc').textContent = ''; return; }
+    if (S.viseur && S.map && !S.mire) { var vi = viseurInfo(); $('#m-coords').textContent = vi.t; $('#m-acc').textContent = ''; $('#m-speed').textContent = vi.sub; $('#m-head').textContent = ''; return; }
+    if (!S.pos) { $('#m-coords').textContent = 'Position GPS en attente…'; $('#m-acc').textContent = ''; $('#m-speed').textContent = ''; $('#m-head').textContent = ''; return; }
     if (!(S.mire === 'measure')) $('#m-coords').textContent = fmtLL(S.pos.lat, S.pos.lon);
     $('#m-acc').textContent = '±' + Math.round(S.acc) + ' m';
     $('#m-speed').textContent = S.speed != null && S.speed > 0.3 ? num(S.speed, 1) + ' km/h' : '';
@@ -472,7 +457,7 @@
   // ── Mire : placer, déplacer, mesurer ──
   function enterMire(mode) {
     exitMire(); S.mire = mode;
-    $('#mire').classList.remove('hidden'); $('#mire-bar').classList.remove('hidden'); $('#map-bottom').classList.add('hidden');
+    syncMire(); $('#mire-bar').classList.remove('hidden'); $('#map-bottom').classList.add('hidden');
     var b = $('#mire-btns');
     if (mode === 'wp') b.innerHTML = '<button class="btn" data-act="exitMire">Annuler</button><button class="btn primary" data-act="mireWp">' + ic('pin') + 'Placer ici</button>';
     if (mode === 'move') b.innerHTML = '<button class="btn" data-act="exitMire">Annuler</button><button class="btn primary" data-act="mireMove">' + ic('move') + 'Déplacer ici</button>';
@@ -484,7 +469,7 @@
     S.measureLayers.forEach(function (l) { S.map.removeLayer(l); }); S.measureLayers = []; S.measurePts = [];
     if (S.elastic) { S.map.removeLayer(S.elastic); S.elastic = null; }
     S.mire = null; S.movingWp = null;
-    $('#mire').classList.add('hidden'); $('#mire-bar').classList.add('hidden'); $('#map-bottom').classList.remove('hidden'); $('#m-measure').classList.remove('on');
+    syncMire(); $('#mire-bar').classList.add('hidden'); $('#map-bottom').classList.remove('hidden'); $('#m-measure').classList.remove('on');
     updateCoordsBar();
   }
   function updateMire() {
@@ -529,16 +514,21 @@
     var w = wpById(id); if (!w) return;
     S.wpOpen = id; S.wpReturn = from || S.wpReturn || 'points';
     $('#view-wp').classList.add('active');
-    var cat = CAT[w.cat] || CAT.observation, l = layerById(w.layerId), cs = cartesFor(w);
+    var l = layerById(w.layerId), cs = cartesFor(w), props = w.props || {}, pk = Object.keys(props);
     $('#wp-body').innerHTML =
       '<div class="photos" id="wp-photos" style="margin-top:8px">' + (w.photoIds || []).map(function () { return '<div class="photo"></div>'; }).join('') + '</div>' +
       '<h2 style="margin:14px 0 8px;font-size:26px;line-height:1.15;-webkit-user-select:text;user-select:text">' + esc(w.name) + '</h2>' +
-      '<div class="wrap" style="margin-bottom:14px"><span class="chip">' + shapeSvg(w.shape, w.color, 18) + esc(cat.label) + '</span>' +
-      (l ? '<span class="chip"><span class="dot" style="background:' + esc(l.color) + '"></span>' + esc(l.name) + '</span>' : '<span class="chip">Sans calque</span>') + '</div>' +
+      '<div class="wrap" style="margin-bottom:14px"><span class="chip">' + wpIcon(w, 22) + esc(NVSym.labelOf(w)) + '</span>' +
+      (l ? '<span class="chip"><span class="dot" style="background:' + esc(l.color) + '"></span>' + esc(l.name) + '</span>' : '<span class="chip">Sans calque</span>') +
+      (w.imported ? '<span class="chip">' + (w.modified ? 'Importé · modifié' : 'Importé') + '</span>' : '') + '</div>' +
       '<div class="tiles" style="margin-bottom:14px"><div class="tile"><span>Distance</span><b id="wp-dist">—</b></div><div class="tile"><span>Cap</span><b id="wp-cap">—</b></div></div>' +
-      '<dl class="kv"><dt>Position</dt><dd class="mono">' + fmtLL(w.lat, w.lon) + '</dd><dt>Décimal</dt><dd class="mono" style="-webkit-user-select:text;user-select:text">' + w.lat.toFixed(6) + ', ' + w.lon.toFixed(6) + '</dd>' +
-      '<dt>Créé</dt><dd>' + esc(fmtDate(w.timestamp)) + '</dd><dt>Cartes</dt><dd>' + (cs.length ? 'Visible sur ' + cs.length + ' carte' + (cs.length > 1 ? 's' : '') + ' : ' + esc(cs.map(function (c) { return c.name; }).join(', ')) : 'Hors de vos cartes') + '</dd></dl>' +
-      (w.comment ? '<div class="note" style="margin-top:14px">' + esc(w.comment) + '</div>' : '');
+      '<dl class="kv"><dt>Position</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon)) + '</dd>' +
+      (S.coordFmt !== 'dd' ? '<dt>Décimal</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon, 'dd')) + '</dd>' : '') +
+      '<dt>Copier</dt><dd class="mono" style="-webkit-user-select:text;user-select:text">' + NVCoords.plain(w.lat, w.lon) + '</dd>' +
+      '<dt>Créé</dt><dd>' + esc(fmtDate(w.timestamp)) + '</dd><dt>Cartes</dt><dd>' + (cs.length ? 'Visible sur ' + pl(cs.length, 'carte') + ' : ' + esc(cs.map(function (c) { return c.name; }).join(', ')) : 'Hors de vos cartes') + '</dd>' +
+      '<dt>Envoi</dt><dd>' + (w.sentAt ? 'Envoyé au bureau le ' + esc(fmtDate(w.sentAt)) : (w.imported && !w.modified ? 'Reçu du bureau' : 'Pas encore envoyé')) + '</dd></dl>' +
+      (w.comment ? '<div class="note" style="margin-top:14px">' + esc(w.comment) + '</div>' : '') +
+      (pk.length ? '<div class="section-h"><h2>Attributs du calque</h2></div><dl class="kv">' + pk.map(function (k) { return '<dt>' + esc(k) + '</dt><dd>' + esc(props[k]) + '</dd>'; }).join('') + '</dl>' : '');
     updateWpLive();
     var photos = await NavDB.getPhotos(w);
     if (S.wpOpen !== id) return;
@@ -579,9 +569,9 @@
   // ══════════════ Formulaire d'un point ══════════════
   async function openWpForm(wp, latlng) {
     var lid = wp ? wp.layerId : await ensureActiveLayer();
-    var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', cat: 'observation', shape: 'circle', color: CAT.observation.color, layerId: lid, lat: latlng.lat, lon: latlng.lon };
+    var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', sym: S.lastSym || 'point', color: null, layerId: lid, lat: latlng.lat, lon: latlng.lon };
     var photos = wp ? (await NavDB.getPhotos(wp)).map(function (p) { return { id: p.id, data: p.data }; }) : [];
-    S.form = { edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: 'dd', showCoords: !!(latlng && latlng.manual) };
+    S.form = { edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: S.coordFmt, showCoords: !!(latlng && latlng.manual) };
     $('#wpf-title').textContent = wp ? 'Modifier le point' : 'Nouveau point';
     $('#view-wpform').classList.add('active');
     renderWpForm();
@@ -592,42 +582,55 @@
     if (g('wpf-name') != null) f.wp.name = g('wpf-name');
     if (g('wpf-comment') != null) f.wp.comment = g('wpf-comment');
     if (g('wpf-layer') != null && g('wpf-layer') !== '__new') f.wp.layerId = g('wpf-layer') || null;
-    if (g('wpf-color') != null) f.wp.color = g('wpf-color');
+    if (g('wpf-color') != null && f.colorTouched) f.wp.color = g('wpf-color');
   }
-  function dmsInputs(prefix, v, posL, negL) {
-    var a = Math.abs(v || 0), d = Math.floor(a), m = Math.floor((a - d) * 60), s = ((a - d) * 60 - m) * 60;
-    return '<div style="display:grid;grid-template-columns:1fr 1fr 1.3fr 1fr;gap:6px"><input class="input" id="' + prefix + '-d" inputmode="numeric" value="' + d + '" aria-label="degrés">' +
-      '<input class="input" id="' + prefix + '-m" inputmode="numeric" value="' + m + '" aria-label="minutes"><input class="input" id="' + prefix + '-s" inputmode="decimal" value="' + s.toFixed(2) + '" aria-label="secondes">' +
-      '<select class="input" id="' + prefix + '-h" aria-label="hémisphère"><option' + ((v || 0) >= 0 ? ' selected' : '') + '>' + posL + '</option><option' + ((v || 0) < 0 ? ' selected' : '') + '>' + negL + '</option></select></div>';
+  function coordInputs(fmt, lat, lon) {
+    var inp = function (id, val, lbl, mode) { return '<input class="input mono" id="' + id + '" inputmode="' + (mode || 'decimal') + '" value="' + val + '" aria-label="' + lbl + '">'; };
+    var hemi = function (id, v, pos, neg) { return '<select class="input" id="' + id + '" aria-label="hémisphère"><option' + (v >= 0 ? ' selected' : '') + '>' + pos + '</option><option' + (v < 0 ? ' selected' : '') + '>' + neg + '</option></select>'; };
+    if (fmt === 'utm' || fmt === 'mtm') {
+      var p = NVCoords.toTM(lat, lon, NVCoords.ZONES[fmt]);
+      return '<div class="grid2">' + inp('wpf-e', Math.round(p.e), 'Est (m)', 'numeric') + inp('wpf-n', Math.round(p.n), 'Nord (m)', 'numeric') + '</div><span class="muted" style="font-size:13px">' + NVCoords.ZONES[fmt].label + ' — Est, Nord en mètres (NAD83)</span>';
+    }
+    if (fmt === 'dms' || fmt === 'ddm') {
+      var row = function (pre, v, pos, neg) {
+        var a = Math.abs(v), d = Math.floor(a), md = (a - d) * 60, m = Math.floor(md), sec = (md - m) * 60;
+        return '<div style="display:grid;grid-template-columns:1fr ' + (fmt === 'dms' ? '1fr 1.3fr' : '1.6fr') + ' 1fr;gap:6px">' + inp(pre + '-d', d, 'degrés', 'numeric') +
+          (fmt === 'dms' ? inp(pre + '-m', m, 'minutes', 'numeric') + inp(pre + '-s', sec.toFixed(2), 'secondes') : inp(pre + '-m', md.toFixed(4), 'minutes décimales')) + hemi(pre + '-h', v, pos, neg) + '</div>';
+      };
+      return '<span class="muted" style="font-size:13px">Latitude</span>' + row('wpf-la', lat, 'N', 'S') + '<span class="muted" style="font-size:13px">Longitude</span>' + row('wpf-lo', lon, 'E', 'O');
+    }
+    return '<div class="grid2">' + inp('wpf-lat', lat.toFixed(6), 'Latitude') + inp('wpf-lon', lon.toFixed(6), 'Longitude') + '</div>';
   }
   function renderWpForm() {
-    var f = S.form, w = f.wp, html = '';
+    var f = S.form, w = f.wp, html = '', col = w.color || (NVSym.BY[w.sym || 'point'] || NVSym.BY.point).color;
     html += '<label class="field"><span>Nom</span><input class="input" id="wpf-name" maxlength="60" value="' + esc(w.name) + '"></label>';
     html += '<label class="field"><span>Calque</span><select class="input" id="wpf-layer" data-act-change="layerSelect">' + S.layers.map(function (l) { return '<option value="' + esc(l.id) + '"' + (l.id === w.layerId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') + '<option value="__new">+ Nouveau calque…</option></select></label>';
-    html += '<div class="field"><span>Catégorie</span><div class="wrap">' + CATS.map(function (c) { return '<button class="chip cat' + (w.cat === c.id ? ' on' : '') + '" data-act="fCat" data-id="' + c.id + '"><span class="dot" style="background:' + c.color + '"></span>' + c.label + '</button>'; }).join('') + '</div></div>';
-    html += '<div class="field"><span>Symbole</span><div class="wrap">' + SHAPES.map(function (s) { return '<button class="sym' + (w.shape === s ? ' on' : '') + '" data-act="fShape" data-id="' + s + '" aria-label="' + s + '">' + shapeSvg(s, w.color, 26) + '</button>'; }).join('') +
-      '<label class="sym" style="position:relative;overflow:hidden" aria-label="Couleur"><span style="width:28px;height:28px;border-radius:14px;background:' + esc(w.color) + ';border:2px solid #fff"></span><input type="color" id="wpf-color" value="' + esc(w.color) + '" data-act-change="fColor" style="position:absolute;inset:0;opacity:0"></label></div></div>';
+    html += '<div class="field"><span>Symbole' + (w.sym ? ' : ' + esc(NVSym.BY[w.sym].label) : ' (ancien symbole — choisissez-en un)') + '</span><div class="symgrid">' + NVSym.LIST.map(function (s) {
+      return '<button class="symbtn' + (w.sym === s.id ? ' on' : '') + '" data-act="fSym" data-id="' + s.id + '" aria-label="' + esc(s.label) + '">' + NVSym.svg(s.id, w.sym === s.id ? col : null, 34) + '<span>' + esc(s.short) + '</span></button>';
+    }).join('') + '</div></div>';
+    html += '<div class="field"><span>Couleur</span><div class="wrap" style="align-items:center"><label class="sym" style="position:relative;overflow:hidden;width:auto;padding:0 14px;gap:10px" aria-label="Couleur"><span style="width:28px;height:28px;border-radius:14px;background:' + esc(col) + ';border:2px solid #fff"></span>Changer<input type="color" id="wpf-color" value="' + esc(col) + '" data-act-change="fColor" style="position:absolute;inset:0;opacity:0"></label>' +
+      (w.color ? '<button class="btn" style="min-height:52px" data-act="fColorReset">Couleur du symbole</button>' : '') + '</div></div>';
     html += '<div class="field"><span>Photos</span><div class="photos">' + f.photos.map(function (p, i) { return '<div class="photo"><img src="' + p.data + '" alt=""><button class="del" data-act="fPhotoDel" data-i="' + i + '" aria-label="Retirer la photo">' + ic('x', 'sm') + '</button></div>'; }).join('') +
       '<button class="photo-add" data-act="fPhotoAdd">' + ic('camera') + 'Ajouter</button></div></div>';
     html += '<label class="field"><span>Commentaire</span><textarea class="input" id="wpf-comment" rows="3">' + esc(w.comment) + '</textarea></label>';
-    html += '<div class="field"><span>Position</span><div class="mono" style="font-size:16px">' + fmtLL(w.lat, w.lon) + '</div>';
+    html += '<div class="field"><span>Position</span><div class="mono" style="font-size:16px">' + esc(fmtLL(w.lat, w.lon)) + '</div>';
     if (!f.showCoords) html += '<button class="btn" style="margin-top:6px" data-act="fCoords">' + ic('edit', 'sm') + 'Entrer des coordonnées</button>';
     else {
-      html += '<div class="seg" style="margin:8px 0"><button class="' + (f.coordFmt === 'dd' ? 'on' : '') + '" data-act="fFmt" data-id="dd">Degrés décimaux</button><button class="' + (f.coordFmt === 'dms' ? 'on' : '') + '" data-act="fFmt" data-id="dms">Degrés min. sec.</button></div>';
-      if (f.coordFmt === 'dd') html += '<div class="grid2"><input class="input mono" id="wpf-lat" inputmode="decimal" value="' + w.lat.toFixed(6) + '" aria-label="Latitude"><input class="input mono" id="wpf-lon" inputmode="decimal" value="' + w.lon.toFixed(6) + '" aria-label="Longitude"></div>';
-      else html += '<div style="display:flex;flex-direction:column;gap:6px"><span class="muted" style="font-size:13px">Latitude</span>' + dmsInputs('wpf-la', w.lat, 'N', 'S') + '<span class="muted" style="font-size:13px">Longitude</span>' + dmsInputs('wpf-lo', w.lon, 'E', 'O') + '</div>';
+      html += '<div class="chips" style="margin:8px 0">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (f.coordFmt === x[0] ? ' on' : '') + '" data-act="fFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:6px">' + coordInputs(f.coordFmt, w.lat, w.lon) + '</div>';
       html += '<button class="btn" style="margin-top:8px" data-act="fCoordsApply">' + ic('check', 'sm') + 'Appliquer ces coordonnées</button>';
     }
     html += '</div>';
     $('#wpf-body').innerHTML = html;
   }
   function readCoords() {
-    var f = S.form, lat, lon;
-    if (f.coordFmt === 'dd') { lat = parseFloat(String($('#wpf-lat').value).replace(',', '.')); lon = parseFloat(String($('#wpf-lon').value).replace(',', '.')); }
+    var f = S.form, lat, lon, v = function (id) { return parseFloat(String($('#' + id).value).replace(',', '.').replace(/\s/g, '')); };
+    if (f.coordFmt === 'dd') { lat = v('wpf-lat'); lon = v('wpf-lon'); }
+    else if (f.coordFmt === 'utm' || f.coordFmt === 'mtm') { var g = NVCoords.fromTM(v('wpf-e'), v('wpf-n'), NVCoords.ZONES[f.coordFmt]); lat = g.lat; lon = g.lon; }
     else {
-      var v = function (id) { return parseFloat(String($('#' + id).value).replace(',', '.')) || 0; };
-      lat = (v('wpf-la-d') + v('wpf-la-m') / 60 + v('wpf-la-s') / 3600) * ($('#wpf-la-h').value === 'S' ? -1 : 1);
-      lon = (v('wpf-lo-d') + v('wpf-lo-m') / 60 + v('wpf-lo-s') / 3600) * ($('#wpf-lo-h').value === 'O' ? -1 : 1);
+      var part = function (pre) { var d = v(pre + '-d') || 0, m = v(pre + '-m') || 0, sec = f.coordFmt === 'dms' ? (v(pre + '-s') || 0) : 0; return d + m / 60 + sec / 3600; };
+      lat = part('wpf-la') * ($('#wpf-la-h').value === 'S' ? -1 : 1);
+      lon = part('wpf-lo') * ($('#wpf-lo-h').value === 'O' ? -1 : 1);
     }
     if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) { toast('Coordonnées invalides'); return false; }
     f.wp.lat = lat; f.wp.lon = lon; return true;
@@ -638,6 +641,8 @@
     if (f.showCoords && !readCoords()) return;
     w.name = (w.name || '').trim() || ('WP-' + (S.wps.length + 1)); w.comment = (w.comment || '').trim();
     if (!f.edit) { w.id = Date.now(); w.timestamp = new Date().toISOString(); w.photoIds = []; }
+    else { w.sentAt = null; if (w.imported) w.modified = true; }
+    if (w.sym) S.lastSym = w.sym;
     for (var i = 0; i < f.removed.length; i++) await NavDB.deletePhoto(f.removed[i]);
     var ids = [];
     for (var j = 0; j < f.photos.length; j++) { var p = f.photos[j]; ids.push(p.id || await NavDB.addPhoto(w.id, p.data)); }
@@ -671,21 +676,28 @@
   }
 
   // ══════════════ Points et tracés ══════════════
+  function unsent() {
+    return { wps: S.wps.filter(function (w) { return !w.sentAt && (!w.imported || w.modified); }),
+      trs: S.traces.filter(function (t) { return !t.sentAt && !t.imported; }) };
+  }
   function renderPoints() {
-    var html = '<div class="section-h"><h2>Calques</h2><button class="btn" style="min-height:44px" data-act="newLayer">' + ic('plus', 'sm') + 'Nouveau</button></div>';
-    if (!S.layers.length) html += '<div class="empty" style="padding:14px">Aucun calque. Il sera créé avec votre premier point.</div>';
+    var u = unsent(), html = '';
+    html += '<button class="btn primary big" style="margin-top:6px" data-act="sendOffice">' + ic('share') + '<span>Envoyer au bureau' + (u.wps.length + u.trs.length ? '<span style="display:block;font-size:14px;font-weight:400">' + pl(u.wps.length, 'nouveau point', 'nouveaux points') + ' · ' + pl(u.trs.length, 'tracé') + '</span>' : '<span style="display:block;font-size:14px;font-weight:400">Tout a été envoyé</span>') + '</span></button>';
+    html += '<div class="section-h"><h2>Calques</h2><span style="display:flex;gap:8px"><button class="btn" style="min-height:44px" data-act="importLayer">' + ic('download', 'sm') + 'Importer</button><button class="btn" style="min-height:44px" data-act="newLayer">' + ic('plus', 'sm') + 'Nouveau</button></span></div>';
+    if (!S.layers.length) html += '<div class="empty" style="padding:14px">Aucun calque. Il sera créé avec votre premier point, ou importez celui que le bureau vous a envoyé (GeoJSON, KML, GPX).</div>';
     else {
       html += '<div class="list">' + S.layers.map(function (l) {
         var nw = S.wps.filter(function (w) { return w.layerId === l.id; }).length, nt = S.traces.filter(function (t) { return t.layerId === l.id; }).length, vis = l.visible !== false;
-        return '<div class="row"><span class="dot" style="width:18px;height:18px;border-radius:9px;background:' + esc(l.color) + '"></span><span class="main"><span class="t">' + esc(l.name) + (S.activeLayerId === l.id ? ' <span class="badge">actif</span>' : '') + '</span><span class="s">' + pl(nw, 'point') + ' · ' + pl(nt, 'tracé') + '</span></span>' +
+        return '<div class="row"><span class="dot" style="width:18px;height:18px;border-radius:9px;background:' + esc(l.color) + '"></span><span class="main"><span class="t">' + esc(l.name) + (S.activeLayerId === l.id ? ' <span class="badge">actif</span>' : '') + '</span><span class="s">' + pl(nw, 'point') + ' · ' + pl(nt, 'tracé') + (l.source ? ' · importé ' + esc(fmtDay(l.importedAt)) : '') + '</span></span>' +
           '<button class="more" data-act="layerVis" data-id="' + esc(l.id) + '" aria-label="' + (vis ? 'Masquer' : 'Afficher') + ' le calque" style="color:' + (vis ? 'var(--text)' : 'var(--muted)') + '">' + ic(vis ? 'eye' : 'eyeoff') + '</button>' +
           '<button class="more" data-act="layerMenu" data-id="' + esc(l.id) + '" aria-label="Actions du calque">' + ic('more') + '</button></div>';
       }).join('') + '</div>';
     }
     html += '<div class="seg" style="margin:18px 0 10px"><button class="' + (S.ptsMode === 'points' ? 'on' : '') + '" data-act="ptsMode" data-id="points">Points (' + S.wps.length + ')</button><button class="' + (S.ptsMode === 'traces' ? 'on' : '') + '" data-act="ptsMode" data-id="traces">Tracés (' + S.traces.length + ')</button></div>';
     if (S.ptsMode === 'points') {
+      var used = {}; S.wps.forEach(function (w) { used[NVSym.idOf(w)] = true; });
       html += '<label class="search" style="margin:0 0 8px">' + ic('search', 'sm muted') + '<span class="sr">Rechercher</span><input type="search" id="pts-search" placeholder="Rechercher un point" value="' + esc(S.ptsQuery) + '" autocomplete="off"></label>';
-      html += '<div class="chips"><button class="chip' + (!S.ptsCat ? ' on' : '') + '" data-act="ptsCat" data-id="">Tous</button>' + CATS.map(function (c) { return '<button class="chip' + (S.ptsCat === c.id ? ' on' : '') + '" data-act="ptsCat" data-id="' + c.id + '"><span class="dot" style="background:' + c.color + '"></span>' + c.label + '</button>'; }).join('') + '</div>';
+      html += '<div class="chips"><button class="chip' + (!S.ptsSym ? ' on' : '') + '" data-act="ptsSym" data-id="">Tous</button>' + NVSym.LIST.filter(function (x) { return used[x.id]; }).map(function (x) { return '<button class="chip' + (S.ptsSym === x.id ? ' on' : '') + '" data-act="ptsSym" data-id="' + x.id + '">' + NVSym.svg(x.id, null, 22) + esc(x.short) + '</button>'; }).join('') + '</div>';
     }
     html += '<div id="pts-list" style="margin-top:6px"></div>';
     $('#pts-body').innerHTML = html;
@@ -697,18 +709,18 @@
       var ts = S.traces.slice().sort(function (a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
       box.innerHTML = ts.length ? '<div class="list">' + ts.map(function (t) {
         var l = layerById(t.layerId);
-        return '<div class="row"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 20c5-10 9 2 13-8s5-6 7-8" fill="none" stroke="' + esc(t.color || '#ff3d00') + '" stroke-width="4" stroke-linecap="round"/></svg><span class="main"><span class="t">' + esc(t.name || 'Tracé') + '</span><span class="s">' + fmtDist(traceDist(t.points || [])) + ' · ' + esc(fmtDay(t.timestamp)) + (l ? ' · ' + esc(l.name) : '') + '</span></span>' +
+        return '<div class="row"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 20c5-10 9 2 13-8s5-6 7-8" fill="none" stroke="' + esc(t.color || '#ff3d00') + '" stroke-width="4" stroke-linecap="round"/></svg><span class="main"><span class="t">' + esc(t.name || 'Tracé') + '</span><span class="s">' + fmtDist(traceDist(t.points || [])) + ' · ' + esc(fmtDay(t.timestamp)) + (l ? ' · ' + esc(l.name) : '') + (t.imported ? ' · importé' : (t.sentAt ? ' · envoyé' : '')) + '</span></span>' +
           '<button class="more" data-act="traceMenu" data-id="' + t.id + '" aria-label="Actions du tracé">' + ic('more') + '</button></div>';
       }).join('') + '</div>' : '<div class="empty">Aucun tracé. Lancez-en un avec le bouton <b>Tracé</b> sur la carte.</div>';
       return;
     }
     var q = S.ptsQuery.trim().toLowerCase();
-    var ws = S.wps.filter(function (w) { return (!S.ptsCat || (w.cat || 'observation') === S.ptsCat) && (!q || (w.name || '').toLowerCase().indexOf(q) >= 0 || (w.comment || '').toLowerCase().indexOf(q) >= 0); });
+    var ws = S.wps.filter(function (w) { return (!S.ptsSym || NVSym.idOf(w) === S.ptsSym) && (!q || (w.name || '').toLowerCase().indexOf(q) >= 0 || (w.comment || '').toLowerCase().indexOf(q) >= 0); });
     if (S.pos) ws.sort(function (a, b) { return hav(S.pos, a) - hav(S.pos, b); }); else ws.sort(function (a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
     var shown = ws.slice(0, 300);
     box.innerHTML = shown.length ? '<div class="list">' + shown.map(function (w) {
-      var l = layerById(w.layerId), c = CAT[w.cat] || CAT.observation;
-      return '<button class="row" data-act="openWp" data-id="' + w.id + '">' + shapeSvg(w.shape, w.color, 26) + '<span class="main"><span class="t">' + esc(w.name) + '</span><span class="s">' + esc(c.label) + (l ? ' · ' + esc(l.name) : '') + ((w.photoIds || []).length ? ' · ' + w.photoIds.length + ' photo' + (w.photoIds.length > 1 ? 's' : '') : '') + '</span></span>' +
+      var l = layerById(w.layerId), sym = NVSym.BY[NVSym.idOf(w)];
+      return '<button class="row" data-act="openWp" data-id="' + w.id + '">' + wpIcon(w, 30) + '<span class="main"><span class="t">' + esc(w.name) + '</span><span class="s">' + esc(sym.short) + (l ? ' · ' + esc(l.name) : '') + ((w.photoIds || []).length ? ' · ' + pl(w.photoIds.length, 'photo') : '') + (!w.sentAt && (!w.imported || w.modified) ? ' · à envoyer' : '') + '</span></span>' +
         (S.pos ? '<span class="n">' + fmtDist(hav(S.pos, w)) + '</span>' : '') + ic('chev', 'sm muted') + '</button>';
     }).join('') + '</div>' + (ws.length > 300 ? '<p class="muted">' + (ws.length - 300) + ' autres points : affinez la recherche.</p>' : '') :
       '<div class="empty">' + (S.wps.length ? 'Aucun point ne correspond.' : 'Aucun point. Ajoutez-en un avec le bouton <b>Point</b> sur la carte.') + '</div>';
@@ -836,8 +848,121 @@
     if (S.ov) drawOvFootprints();
   }
 
+  // ══════════════ Viseur permanent ══════════════
+  function toggleViseur(on) {
+    S.viseur = on == null ? !S.viseur : on;
+    $('#m-viseur').classList.toggle('on', S.viseur);
+    syncMire(); updateCoordsBar();
+  }
+  function syncMire() { $('#mire').classList.toggle('hidden', !(S.viseur || S.mire)); }
+  function viseurInfo() {
+    var c = ll(S.map.getCenter()), t = 'Viseur · ' + fmtLL(c.lat, c.lon);
+    var sub = S.pos ? 'à ' + fmtDist(hav(S.pos, c)) + ' · cap ' + deg(bearing(S.pos, c)) + ' de vous' : 'position GPS en attente';
+    return { t: t, sub: sub, c: c };
+  }
+
+  // ══════════════ Coller des coordonnées ══════════════
+  function pasteSheet() {
+    openSheet('<h3>Coller des coordonnées</h3><p>Collez le texte reçu (texto, courriel). Formats reconnus : décimal, DMS, degrés-minutes, UTM 19, MTM 6.</p>' +
+      '<div class="field"><textarea class="input" id="paste-txt" rows="3" placeholder="ex. 48.20714, -68.51233"></textarea></div><div class="field"><span id="paste-res" class="mono" style="font-size:15px;color:var(--muted)">—</span></div>' +
+      '<div class="grid2"><button class="btn" data-act="closeSheet">Annuler</button><button class="btn primary" data-act="pasteOk" id="paste-ok" disabled>Créer le point</button></div>');
+    var ta = $('#paste-txt'), upd = function () {
+      var r = NVCoords.parse(ta.value), res = $('#paste-res'), ok = $('#paste-ok');
+      if (!r) { res.textContent = ta.value.trim() ? 'Coordonnées non reconnues' : '—'; ok.disabled = true; S._paste = null; return; }
+      S._paste = r; ok.disabled = false;
+      var cs = cartesAt(r.lat, r.lon);
+      res.innerHTML = esc(fmtLL(r.lat, r.lon)) + '<br>' + esc(cs.length ? 'Sur ' + pl(cs.length, 'carte') + ' : ' + cs.map(function (c) { return c.name; }).join(', ') : 'Hors de vos cartes') + (S.pos ? ' · à ' + fmtDist(hav(S.pos, r)) + ' de vous' : '');
+    };
+    ta.addEventListener('input', upd);
+    setTimeout(function () { ta.focus(); }, 250);
+    try { if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (t) { if (t && NVCoords.parse(t) && !ta.value) { ta.value = t; upd(); } }).catch(function () {}); } catch (e) {}
+  }
+
+  // ══════════════ Import d'un calque (GeoJSON, KML, KMZ, GPX) ══════════════
+  async function importLayerFile(file) {
+    var data;
+    try { toast('Lecture de ' + file.name + '…', 8000); data = await NVImport.parseFile(file); }
+    catch (e) { await confirmSheet('Import impossible', file.name + ' : ' + (e && e.message || e), 'OK'); return; }
+    var same = S.layers.find(function (l) { return l.name.toLowerCase() === String(data.name).toLowerCase(); });
+    var summary = pl(data.points.length, 'point') + ' et ' + pl(data.lines.length, 'ligne') + ' dans « ' + data.fileName + ' ».';
+    var opts = [];
+    if (same) opts.push({ label: 'Mettre à jour « ' + same.name + ' »', sub: 'Remplace les sites reçus ; garde ceux que vous avez modifiés et vos propres points', icon: 'layers', cls: 'primary', fn: function () { mergeLayer(same, data); } });
+    else opts.push({ label: 'Nouveau calque « ' + data.name + ' »', icon: 'plus', cls: 'primary', fn: async function () { var l = await NavDB.saveLayer({ name: data.name }); S.layers.push(l); mergeLayer(l, data); } });
+    opts.push({ label: 'Choisir un autre calque', icon: 'layers', fn: function () { pickLayer(same ? same.id : null, function (lid) { mergeLayer(layerById(lid), data); }); } });
+    sheetOptions('Importer un calque', summary, opts);
+  }
+  async function mergeLayer(l, data) {
+    var oldW = S.wps.filter(function (w) { return w.layerId === l.id && w.imported; });
+    var oldT = S.traces.filter(function (t) { return t.layerId === l.id && t.imported; });
+    var byExt = {}; oldW.forEach(function (w) { byExt[w.extId] = w; });
+    var seen = {}, added = 0, updated = 0, kept = 0, removed = 0, now = Date.now(), k = 0;
+    for (var i = 0; i < data.points.length; i++) {
+      var p = data.points[i], ex = byExt[p.extId]; seen[p.extId] = true;
+      if (ex && ex.modified) { kept++; continue; } // modifié sur le terrain : on ne l'écrase pas
+      var w = ex || { id: now + (k++), photoIds: [], timestamp: new Date().toISOString(), imported: true, layerId: l.id };
+      Object.assign(w, { extId: p.extId, name: p.name, comment: p.comment, lat: p.lat, lon: p.lon, sym: p.sym || (ex && ex.sym) || 'point', color: p.color || null, props: p.props, layerId: l.id, imported: true, modified: false });
+      await NavDB.saveWaypoint(w);
+      if (ex) updated++; else { S.wps.push(w); added++; }
+    }
+    for (var j = 0; j < oldW.length; j++) {
+      var o = oldW[j]; if (seen[o.extId]) continue; if (o.modified) { kept++; continue; }
+      await NavDB.deleteWaypoint(o); S.wps = S.wps.filter(function (x) { return x.id !== o.id; }); removed++;
+    }
+    for (var a = 0; a < oldT.length; a++) { await NavDB.deleteTrace(oldT[a].id); }
+    S.traces = S.traces.filter(function (t) { return !(t.layerId === l.id && t.imported); });
+    for (var b = 0; b < data.lines.length; b++) {
+      var ln = data.lines[b], t = { id: now + 100000 + b, layerId: l.id, name: ln.name, points: ln.points.map(function (q) { return { lat: q.lat, lon: q.lon }; }), timestamp: new Date().toISOString(), color: l.color, weight: 3, imported: true, extId: ln.extId };
+      await NavDB.saveTrace(t); S.traces.push(t);
+    }
+    l.source = data.fileName; l.importedAt = new Date().toISOString(); await NavDB.saveLayer(l);
+    renderOverlays(); if ($('#view-points').classList.contains('active')) renderPoints();
+    var msg = [added ? pl(added, 'site ajouté', 'sites ajoutés') : '', updated ? pl(updated, 'mis à jour', 'mis à jour') : '', removed ? pl(removed, 'retiré', 'retirés') : '', kept ? pl(kept, 'modifié sur le terrain conservé', 'modifiés sur le terrain conservés') : '', data.lines.length ? pl(data.lines.length, 'ligne') : ''].filter(Boolean).join(', ');
+    sheetOptions('Calque « ' + l.name + ' » à jour', msg || 'Aucun changement.', [{ label: 'Voir sur la carte', icon: 'map', cls: 'primary', fn: function () { var p0 = data.points[0] || (data.lines[0] && data.lines[0].points[0]); if (p0) showOnMap(p0.lat, p0.lon); } }, { label: 'Fermer', fn: function () {} }], true);
+  }
+
+  // ══════════════ Envoyer au bureau ══════════════
+  async function sendOffice() {
+    var u = unsent();
+    var opts = [];
+    if (u.wps.length || u.trs.length) opts.push({ label: 'Envoyer les nouveautés', sub: pl(u.wps.length, 'point') + ' · ' + pl(u.trs.length, 'tracé') + ' depuis le dernier envoi', icon: 'share', cls: 'primary', fn: function () { prepareSend(u.wps, u.trs, 'nouveautés'); } });
+    var mine = S.wps.filter(function (w) { return !w.imported || w.modified; }), myT = S.traces.filter(function (t) { return !t.imported; });
+    opts.push({ label: 'Tout renvoyer', sub: pl(mine.length, 'point') + ' · ' + pl(myT.length, 'tracé') + ' (les sites reçus non modifiés sont exclus)', icon: 'share', fn: function () { prepareSend(mine, myT, 'tout'); } });
+    if (!S.employee) opts.push({ label: 'Indiquer mon nom', sub: 'Il apparaîtra dans l\'objet du courriel', icon: 'edit', fn: async function () { var n = await askText('Votre nom', '', 'ex. Julia'); if (n) { S.employee = n; await NavDB.setMeta('employee', n); } sendOffice(); } });
+    sheetOptions('Envoyer au bureau', 'Destinataire : ' + S.officeEmail + '. Les fichiers (KMZ avec photos + GeoJSON) s\'ouvrent dans Mail : choisissez l\'adresse, puis Envoyer. Faites-le de préférence sur Wi-Fi.', opts);
+  }
+  async function prepareSend(wps, trs, what) {
+    if (!wps.length && !trs.length) { toast('Rien à envoyer'); return; }
+    toast('Préparation de l\'envoi…', 20000);
+    var by = layersById(), day = new Date().toISOString().slice(0, 10), who = S.employee || 'terrain';
+    var label = who;
+    try {
+      var files = (await NVExport.kmz(wps, trs, by, label, NavDB.getPhotos, 0.7, 'auto')).concat(NVExport.geojson(wps, trs, by, label));
+      var subject = 'NAVenza — ' + who + ' — ' + day + ' — ' + pl(wps.length, 'point') + ', ' + pl(trs.length, 'tracé');
+      var fl = files.map(function (f) { return new File([f.blob], f.name, { type: f.blob.type || 'application/octet-stream' }); });
+      var size = files.reduce(function (s, f) { return s + f.blob.size; }, 0);
+      var markSent = async function () {
+        var now = new Date().toISOString();
+        for (var i = 0; i < wps.length; i++) { wps[i].sentAt = now; await NavDB.saveWaypoint(wps[i]); }
+        for (var j = 0; j < trs.length; j++) { trs[j].sentAt = now; await NavDB.saveTrace(trs[j]); }
+        await NavDB.setMeta('lastSent', now); if ($('#view-points').classList.contains('active')) renderPoints();
+      };
+      var canShare = navigator.share && navigator.canShare && navigator.canShare({ files: fl });
+      var opts = [];
+      if (canShare) opts.push({ label: 'Ouvrir dans Mail', sub: 'À : ' + S.officeEmail + ' · ' + fmtSize(size), icon: 'share', cls: 'primary', fn: async function () {
+        try { await navigator.share({ files: fl, title: subject, text: subject + '\n\nÀ envoyer à : ' + S.officeEmail }); await markSent(); toast('Marqué comme envoyé'); }
+        catch (e) { if (e.name !== 'AbortError') toast('Partage impossible : ' + e.message); }
+      } });
+      opts.push({ label: 'Télécharger les fichiers', sub: 'puis les joindre à un courriel à ' + S.officeEmail, icon: 'download', cls: canShare ? '' : 'primary', fn: async function () {
+        for (var i = 0; i < files.length; i++) { download(files[i]); await new Promise(function (r) { setTimeout(r, 400); }); }
+        location.href = 'mailto:' + encodeURIComponent(S.officeEmail) + '?subject=' + encodeURIComponent(subject);
+        if (await confirmSheet('Courriel envoyé ?', 'Marquer ces ' + pl(wps.length, 'point') + ' et ' + pl(trs.length, 'tracé') + ' comme envoyés ?', 'Oui, envoyés')) await markSent();
+      } });
+      sheetOptions('Envoi prêt', subject + (files.length > 2 ? ' — KMZ découpé en ' + (files.length - 1) + ' parties' : ''), opts);
+    } catch (e) { toast('Envoi impossible : ' + e.message, 5000); }
+  }
+
   // ══════════════ Réglages ══════════════
-  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js',
+  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
     'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
     'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2', 'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2'];
   var offlineState = { ok: false, msg: 'Vérification…' };
@@ -856,12 +981,17 @@
     var est = await NavDB.storageEstimate(), mig = await NavDB.getMeta('migrationV3'), persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) {}
     var html = '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['sombre', 'Sombre'], ['soleil', 'Plein soleil'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    html += '<div class="section-h"><h2>Format des coordonnées</h2></div><div class="chips" style="flex-wrap:wrap">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (S.coordFmt === x[0] ? ' on' : '') + '" data-act="setFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<p class="muted" style="font-size:14px;line-height:1.4;margin:4px 2px">Exemple : ' + esc(fmtLL(48.20714, -68.51233)) + '. Sur la carte, touchez la ligne des coordonnées pour changer de format.</p>';
+    html += '<div class="section-h"><h2>Envoi au bureau</h2></div><div class="list">' +
+      '<button class="row" data-act="setEmployee"><span class="main"><span class="t">' + esc(S.employee || 'Votre nom (non indiqué)') + '</span><span class="s">Apparaît dans l\'objet des envois</span></span>' + ic('edit', 'sm muted') + '</button>' +
+      '<button class="row" data-act="setOffice"><span class="main"><span class="t">' + esc(S.officeEmail) + '</span><span class="s">Destinataire des envois</span></span>' + ic('edit', 'sm muted') + '</button></div>';
     html += '<div class="section-h"><h2>Hors ligne et stockage</h2></div><div class="list">' +
       '<div class="row"><span class="main"><span class="t" style="color:' + (offlineState.ok ? 'var(--ok)' : 'var(--accent-text)') + '">' + esc(offlineState.msg) + '</span><span class="s">Application et bibliothèques en cache sur l\'appareil</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + (est && est.usage != null ? fmtSize(est.usage) + ' utilisés' : 'Espace utilisé inconnu') + '</span><span class="s wrap-ok">' + (est && est.quota ? 'Espace disponible pour l\'app : environ ' + fmtSize(est.quota) : 'Quota non communiqué par le système') + (persisted === true ? ' · stockage protégé' : (persisted === false ? ' · stockage non garanti par le système' : '')) + '</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + pl(S.cartes.length, 'carte') + ' · ' + pl(S.folders.length, 'dossier') + '</span><span class="s">' + pl(S.wps.length, 'point') + ' · ' + pl(S.traces.length, 'tracé') + ' · ' + pl(S.layers.length, 'calque') + '</span></span></div></div>';
     html += '<div class="section-h"><h2>Sauvegarde</h2></div><button class="btn block" data-act="backup">' + ic('download') + 'Copie de sécurité complète (GeoJSON)</button>' +
-      '<p class="muted" style="font-size:14px;line-height:1.4">Tous les points et tracés, avec leur calque et leur catégorie. Les photos ne sont incluses que dans l\'export KMZ.</p>';
+      '<p class="muted" style="font-size:14px;line-height:1.4">Tous les points et tracés, avec leur calque, leur symbole et leurs attributs. Les photos ne sont incluses que dans l\'export KMZ.</p>';
     if (mig) html += '<div class="section-h"><h2>Mise à jour v3</h2></div><p class="muted" style="font-size:14px;line-height:1.4">Données converties le ' + esc(fmtDate(mig.date)) + ' : ' + pl(mig.dossiers, 'dossier') + ', ' + pl(mig.cartes, 'carte') + ', ' + pl(mig.calques, 'calque') + ', ' + pl(mig.points, 'point') + ', ' + pl(mig.photos, 'photo') + ', ' + pl(mig.traces, 'tracé') + '.</p>';
     html += '<div class="section-h"><h2>À propos</h2></div><p class="muted" style="font-size:14px;line-height:1.5">NAVenza MAP ' + APP_VERSION + ' — navigation terrain hors réseau, Réserve faunique Duchénier.<br>Polices Atkinson Hyperlegible et IBM Plex Mono (licence SIL OFL 1.1). Leaflet, pdf.js, UTIF.js, JSZip.</p>';
     $('#set-body').innerHTML = html;
@@ -931,12 +1061,22 @@
       sheetOptions('Calques affichés', 'Touchez un calque pour l\'afficher ou le masquer sur toutes les cartes.', opts);
     },
     addPoint: function () {
-      sheetOptions('Nouveau point', null, [
-        { label: 'À ma position GPS', sub: S.pos ? fmtLL(S.pos.lat, S.pos.lon) + ' · ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente', icon: 'locate', cls: 'primary', disabled: !S.pos, fn: function () { openWpForm(null, { lat: S.pos.lat, lon: S.pos.lon }); } },
-        { label: 'Avec la mire', sub: 'Viser un endroit au centre de l\'écran', icon: 'move', fn: function () { enterMire('wp'); } },
-        { label: 'Entrer des coordonnées', icon: 'edit', fn: function () { var c = ll(S.map.getCenter()); openWpForm(null, { lat: c.lat, lon: c.lon, manual: true }); } }
-      ]);
+      var opts = [];
+      if (S.viseur) { var vc = ll(S.map.getCenter()); opts.push({ label: 'Au viseur', sub: fmtLL(vc.lat, vc.lon), icon: 'move', cls: 'primary', fn: function () { openWpForm(null, vc); } }); }
+      opts.push({ label: 'À ma position GPS', sub: S.pos ? fmtLL(S.pos.lat, S.pos.lon) + ' · ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente', icon: 'locate', cls: S.viseur ? '' : 'primary', disabled: !S.pos, fn: function () { openWpForm(null, { lat: S.pos.lat, lon: S.pos.lon }); } });
+      if (!S.viseur) opts.push({ label: 'Avec la mire', sub: 'Viser un endroit au centre de l\'écran', icon: 'move', fn: function () { enterMire('wp'); } });
+      opts.push({ label: 'Coller des coordonnées', sub: 'Reçues par texto ou courriel', icon: 'edit', fn: pasteSheet });
+      opts.push({ label: 'Entrer des coordonnées', icon: 'edit', fn: function () { var c = ll(S.map.getCenter()); openWpForm(null, { lat: c.lat, lon: c.lon, manual: true }); } });
+      sheetOptions('Nouveau point', null, opts);
     },
+    viseur: function () { toggleViseur(); },
+    cycleFmt: function () { var i = NVCoords.FORMATS.findIndex(function (x) { return x[0] === S.coordFmt; }), n = NVCoords.FORMATS[(i + 1) % NVCoords.FORMATS.length]; S.coordFmt = n[0]; NavDB.setMeta('coordFmt', n[0]); updateCoordsBar(); if (S.mire) updateMire(); toast('Coordonnées : ' + n[1]); },
+    pasteOk: function () { var r = S._paste; closeSheet(); if (!r) return; if (S.map && $('#view-map').classList.contains('active')) S.map.setView([r.lat, r.lon], Math.max(S.map.getZoom(), 15)); openWpForm(null, { lat: r.lat, lon: r.lon }); },
+    importLayer: function () { $('#file-layer').click(); },
+    sendOffice: sendOffice,
+    setFmt: function (el) { S.coordFmt = el.dataset.id; NavDB.setMeta('coordFmt', S.coordFmt); renderSettings(); },
+    setEmployee: async function () { var n = await askText('Votre nom', S.employee, 'ex. Julia'); if (n == null) return; S.employee = n; await NavDB.setMeta('employee', n); renderSettings(); },
+    setOffice: async function () { var n = await askText('Courriel du bureau', S.officeEmail, 'faune@terfa.ca'); if (!n) return; S.officeEmail = n; await NavDB.setMeta('officeEmail', n); renderSettings(); },
     trace: function () {
       if (!S.tracing) { startTrace(); return; }
       sheetOptions('Tracé en cours', fmtDist(traceDist(S.tracePts)) + ' · ' + S.tracePts.length + ' points', [
@@ -948,7 +1088,7 @@
     measure: function () { if (S.mire === 'measure') exitMire(); else enterMire('measure'); },
     exitMire: exitMire, measureAdd: measureAdd, measureUndo: measureUndo,
     mireWp: function () { var c = ll(S.map.getCenter()); exitMire(); openWpForm(null, c); },
-    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
+    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.sentAt = null; if (w.imported) w.modified = true; await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
     // Points
     openWp: function (el) { openWp(+el.dataset.id, 'points'); },
     closeWp: closeWp,
@@ -971,8 +1111,8 @@
     viewPhoto: function (el) { var img = el.querySelector('img'); if (!img) return; openSheet('<img src="' + img.src + '" alt="Photo" style="width:100%;border-radius:14px;display:block;margin-bottom:12px"><button class="btn block" data-act="closeSheet">Fermer</button>'); },
     cancelWpForm: function () { $('#view-wpform').classList.remove('active'); S.form = null; },
     saveWpForm: saveWpForm,
-    fCat: function (el) { syncForm(); var c = CAT[el.dataset.id]; S.form.wp.cat = c.id; S.form.wp.color = c.color; renderWpForm(); },
-    fShape: function (el) { syncForm(); S.form.wp.shape = el.dataset.id; renderWpForm(); },
+    fSym: function (el) { syncForm(); S.form.wp.sym = el.dataset.id; S.form.wp.color = null; S.form.colorTouched = false; renderWpForm(); },
+    fColorReset: function () { syncForm(); S.form.wp.color = null; S.form.colorTouched = false; renderWpForm(); },
     fPhotoAdd: function () { syncForm(); $('#file-photo').click(); },
     fPhotoDel: function (el) { syncForm(); var p = S.form.photos.splice(+el.dataset.i, 1)[0]; if (p && p.id) S.form.removed.push(p.id); renderWpForm(); },
     fCoords: function () { syncForm(); S.form.showCoords = true; renderWpForm(); },
@@ -982,7 +1122,7 @@
     layerVis: async function (el) { var l = layerById(el.dataset.id); l.visible = l.visible === false; await NavDB.saveLayer(l); renderPoints(); renderOverlays(); },
     layerMenu: function (el) { layerMenu(layerById(el.dataset.id)); },
     ptsMode: function (el) { S.ptsMode = el.dataset.id; renderPoints(); },
-    ptsCat: function (el) { S.ptsCat = el.dataset.id; renderPoints(); },
+    ptsSym: function (el) { S.ptsSym = el.dataset.id; renderPoints(); },
     traceMenu: function (el) { var t = S.traces.find(function (x) { return x.id === +el.dataset.id; }); if (t) traceMenu(t); },
     exportMenu: exportMenu,
     backup: function () { deliver(NVExport.geojson(S.wps, S.traces, layersById(), 'sauvegarde complete')); },
@@ -1002,13 +1142,14 @@
       if (n) { var l = await NavDB.saveLayer({ name: n }); S.layers.push(l); S.form.wp.layerId = l.id; }
       renderWpForm();
     }
-    if (a === 'fColor') { syncForm(); renderWpForm(); }
+    if (a === 'fColor') { S.form.colorTouched = true; syncForm(); renderWpForm(); }
   });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'lib-search') { S.libQuery = e.target.value; renderLib(); }
     if (e.target.id === 'pts-search') { S.ptsQuery = e.target.value; renderPtsList(); }
   });
   $('#file-import').addEventListener('change', function (e) { var files = Array.from(e.target.files || []); e.target.value = ''; if (files.length) importFiles(files); });
+  $('#file-layer').addEventListener('change', function (e) { var f = (e.target.files || [])[0]; e.target.value = ''; if (f) importLayerFile(f); });
   $('#file-photo').addEventListener('change', async function (e) {
     var files = Array.from(e.target.files || []); e.target.value = '';
     for (var i = 0; i < files.length; i++) { var d = await resizePhoto(files[i]); if (d && S.form) S.form.photos.push({ data: d }); }
@@ -1028,6 +1169,7 @@
     applyTheme((await NavDB.getMeta('theme')) || 'sombre');
     await loadAll();
     S.activeLayerId = (await NavDB.getMeta('activeLayerId')) || null;
+    S.coordFmt = (await NavDB.getMeta('coordFmt')) || 'dd'; S.employee = (await NavDB.getMeta('employee')) || ''; S.officeEmail = (await NavDB.getMeta('officeEmail')) || 'faune@terfa.ca';
     startGPS();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(function (r) { try { r.update(); } catch (e) {} }).catch(function (e) { console.warn('SW :', e); });

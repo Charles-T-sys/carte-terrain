@@ -9,14 +9,17 @@
   function slug(s) { return String(s || 'export').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'export'; }
   function km(a, b) { var R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLon = (b.lon - a.lon) * Math.PI / 180, s = Math.sin(dLat / 2), c = Math.sin(dLon / 2); var h = s * s + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * c * c; return R * 2 * Math.asin(Math.sqrt(h)); }
   function traceKm(t) { var d = 0; for (var i = 1; i < t.points.length; i++) d += km(t.points[i - 1], t.points[i]); return d; }
+  function symId(w) { return window.NVSym ? NVSym.idOf(w) : (w.cat || 'point'); }
+  function symLabel(w) { return window.NVSym ? NVSym.labelOf(w) : (w.cat || ''); }
+  function symColor(w) { return window.NVSym ? (NVSym.BY[symId(w)] || NVSym.BY.point).color : '#ff6d00'; }
   function validTraces(trs) { return trs.filter(function (t) { return t.points && t.points.length > 1; }); }
 
   // ── GeoJSON (points + tracés) ──
   function geojson(wps, trs, byId, label) {
     var f = wps.map(function (w) {
       return { type: 'Feature', geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
-        properties: { id: w.id, name: w.name, layer: layerName(byId, w.layerId), category: w.cat || 'observation', comment: w.comment || '',
-          photo_count: (w.photoIds || []).length, timestamp: w.timestamp, shape: w.shape || 'circle', color: w.color || '#ff6d00' } };
+        properties: Object.assign({}, w.props || {}, { id: w.id, name: w.name, layer: layerName(byId, w.layerId), symbol: symId(w), symbol_label: symLabel(w), comment: w.comment || '',
+          photo_count: (w.photoIds || []).length, timestamp: w.timestamp, color: w.color || symColor(w), source: w.imported ? (w.modified ? 'bureau, modifié' : 'bureau') : 'terrain', ext_id: w.extId || null }) };
     }).concat(validTraces(trs).map(function (t) {
       return { type: 'Feature', geometry: { type: 'LineString', coordinates: t.points.map(function (p) { return [p.lon, p.lat]; }) },
         properties: { id: t.id, name: t.name || 'Tracé', layer: layerName(byId, t.layerId), timestamp: t.timestamp, points: t.points.length,
@@ -31,7 +34,7 @@
     var w = wps.map(function (p) {
       return '  <wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.timestamp ? '<time>' + p.timestamp + '</time>' : '') +
         '<name>' + escapeXml(p.name) + '</name>' + (p.comment ? '<desc>' + escapeXml(p.comment) + '</desc>' : '') +
-        '<type>' + escapeXml(p.cat || 'observation') + '</type></wpt>';
+        '<type>' + escapeXml(symLabel(p)) + '</type></wpt>';
     }).join('\n');
     var t = validTraces(trs).map(function (tr) {
       var pts = tr.points.map(function (p) { return '    <trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.t ? '<time>' + p.t + '</time>' : '') + '</trkpt>'; }).join('\n');
@@ -53,7 +56,7 @@
   async function kmz(wps, trs, byId, label, getPhotos, quality, partsMode) {
     if (typeof JSZip === 'undefined') throw new Error('JSZip non chargé');
     var now = today(), allPhotos = [], folders = {};
-    var styles = wps.map(function (w) { return '<Style id="wp_' + w.id + '"><IconStyle><color>' + hexToKml(w.color) + '</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>'; }).join('') +
+    var styles = wps.map(function (w) { return '<Style id="wp_' + w.id + '"><IconStyle><color>' + hexToKml(w.color || symColor(w)) + '</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>'; }).join('') +
       validTraces(trs).map(function (t) { return '<Style id="tr_' + t.id + '"><LineStyle><color>' + hexToKml(t.color) + '</color><width>' + ((t.weight || 4) * 0.5).toFixed(1) + '</width></LineStyle></Style>'; }).join('');
     function push(layerId, xml) { var k = layerName(byId, layerId) || 'Sans calque'; (folders[k] = folders[k] || []).push(xml); }
     for (var i = 0; i < wps.length; i++) {
@@ -62,7 +65,8 @@
         var c = await compressDataUrl(photos[j].data, quality);
         allPhotos.push({ name: 'wp_' + w.id + '_' + j + '.jpg', dataUrl: c }); prs.push('photos/wp_' + w.id + '_' + j + '.jpg');
       }
-      var desc = []; if (w.comment) desc.push(escapeXml(w.comment));
+      var desc = ['<b>' + escapeXml(symLabel(w)) + '</b>']; if (w.comment) desc.push(escapeXml(w.comment));
+      Object.keys(w.props || {}).forEach(function (k) { desc.push(escapeXml(k) + ' : ' + escapeXml(String(w.props[k]))); });
       prs.forEach(function (p) { desc.push('<img src="' + p + '" style="max-width:300px">'); });
       push(w.layerId, '  <Placemark><name>' + escapeXml(w.name) + '</name>' + (desc.length ? '<description><![CDATA[' + desc.join('<br>') + ']]></description>' : '') +
         '<TimeStamp><when>' + (w.timestamp || now) + '</when></TimeStamp><styleUrl>#wp_' + w.id + '</styleUrl><Point><coordinates>' + w.lon + ',' + w.lat + ',0</coordinates></Point></Placemark>');
@@ -149,12 +153,12 @@
     var zip = new JSZip(), prj = new TextEncoder().encode(PRJ), vt = validTraces(trs);
     if (wps.length) {
       var p = shpPoints(wps), f = zip.folder('points');
-      var fields = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'CATEGORY', type: 'C', len: 20 }, { name: 'COMMENT', type: 'C', len: 254 },
-        { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'SHAPE', type: 'C', len: 12 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'PHOTOS', type: 'N', len: 3 },
+      var fields = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'SYMBOL', type: 'C', len: 20 }, { name: 'SYMB_LABEL', type: 'C', len: 60 }, { name: 'COMMENT', type: 'C', len: 254 },
+        { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'SOURCE', type: 'C', len: 20 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'PHOTOS', type: 'N', len: 3 },
         { name: 'LAT', type: 'N', len: 12, dec: 7 }, { name: 'LON', type: 'N', len: 13, dec: 7 }];
       f.file('points.shp', p.shp); f.file('points.shx', p.shx); f.file('points.prj', prj); f.file('points.cpg', 'UTF-8');
-      f.file('points.dbf', dbf(wps.map(function (w) { return { NAME: w.name || '', LAYER: layerName(byId, w.layerId), CATEGORY: w.cat || 'observation', COMMENT: w.comment || '', TIMESTAMP: (w.timestamp || '').slice(0, 24),
-        SHAPE: w.shape || 'circle', COLOR: w.color || '#ff6d00', PHOTOS: (w.photoIds || []).length, LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }; }), fields));
+      f.file('points.dbf', dbf(wps.map(function (w) { return { NAME: w.name || '', LAYER: layerName(byId, w.layerId), SYMBOL: symId(w), SYMB_LABEL: symLabel(w), COMMENT: w.comment || '', TIMESTAMP: (w.timestamp || '').slice(0, 24),
+        SOURCE: w.imported ? (w.modified ? 'bureau-modifie' : 'bureau') : 'terrain', COLOR: w.color || symColor(w), PHOTOS: (w.photoIds || []).length, LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }; }), fields));
     }
     if (vt.length) {
       var l = shpLines(vt), g = zip.folder('traces');
