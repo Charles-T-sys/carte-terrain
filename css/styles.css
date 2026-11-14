@@ -235,3 +235,11 @@ button.coords { width: 100%; font-family: 'PlexMono', monospace; font-size: 14px
 .symbtn.on { border: 3px solid var(--accent); background: var(--accent-soft); }
 .symbtn svg { width: 34px; height: 34px; }
 .chip svg { flex: none; }
+.wp-icon .st { position: absolute; right: -5px; top: -5px; width: 15px; height: 15px; border-radius: 8px; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
+.wp-icon .st svg { width: 11px; height: 11px; }
+.st-fait { background: #1E9E4A; } .st-pb { background: #D7261E; } .st-todo { background: #FFB547; width: 11px !important; height: 11px !important; right: -3px !important; top: -3px !important; }
+.wp-icon.done > svg { opacity: .55; }
+.seg.statut button.on.st-a_faire { background: var(--accent); color: var(--on-accent); }
+.seg.statut button.on.st-fait { background: #1E9E4A; color: #fff; }
+.seg.statut button.on.st-probleme { background: #D7261E; color: #fff; }
+.dot.st-dot-a_faire { background: #FFB547; } .dot.st-dot-fait { background: #1E9E4A; } .dot.st-dot-probleme { background: #D7261E; }

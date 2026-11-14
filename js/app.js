@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.1.0';
+  var APP_VERSION = '5.2.0';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -35,6 +35,12 @@
   var LCOLORS = ['#FFB547', '#6EDB98', '#7FC8F8', '#FF7A59', '#C792EA', '#F2E85C', '#5AD1C8', '#FF9EC4'];
   var FCOLORS = ['#FFB547', '#7FC8F8', '#6EDB98', '#FF9EC4', '#C792EA', '#F2E85C', '#5AD1C8', '#FF7A59'];
   function wpIcon(w, size) { return NVSym.forWp(w, size); }
+  function statutBadge(w) {
+    if (w.statut === 'fait') return '<span class="st st-fait" aria-label="Fait"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.3 2.3 4.7-4.9" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    if (w.statut === 'probleme') return '<span class="st st-pb" aria-label="Problème"><svg viewBox="0 0 12 12"><rect x="5.1" y="2.2" width="1.8" height="4.8" rx=".9" fill="#fff"/><circle cx="6" cy="9.2" r="1" fill="#fff"/></svg></span>';
+    if (w.statut === 'a_faire') return '<span class="st st-todo" aria-label="À faire"></span>';
+    return '';
+  }
   function fpIcon(c) {
     if (!c.footprint || !c.bbox) return '<span class="fp" aria-hidden="true"></span>';
     var b = c.bbox, w = b[2] - b[0], h = b[3] - b[1], k = 30 / Math.max(w, h * 1.5), pts = c.footprint.map(function (p) { return (5 + (p[1] - b[0]) * k + (30 - w * k) / 2).toFixed(1) + ',' + (5 + (b[3] - p[0]) * k * 1.5 + (30 - h * k * 1.5) / 2).toFixed(1); }).join(' ');
@@ -50,10 +56,24 @@
     follow: false, compassOn: false, navTarget: null,
     tracing: false, tracePts: [], traceLine: null, traceStart: 0, traceTimer: null, traceSaved: 0,
     mire: null, measurePts: [], measureLayers: [], elastic: null, movingWp: null,
-    form: null, wpOpen: null, wpReturn: null, sheetFns: [],
+    form: null, wpOpen: null, wpReturn: null, sheetFns: [], deviceId: '', ptsStat: '',
     ov: null, ovFolder: 'all', ovLayers: null, ovPos: null,
     activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null
   };
+  function newUid() {
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    var h = function () { return Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1); };
+    return h() + h() + '-' + h() + '-4' + h().slice(1) + '-' + h() + '-' + h() + h() + h();
+  }
+  // Tampon d'auteur et de date : à chaque création ou modification sur cet appareil
+  function stamp(o, creating) {
+    var now = new Date().toISOString();
+    if (creating || !o.uid) { o.uid = o.uid || newUid(); o.author = o.author || S.employee || ''; o.device = o.device || S.deviceId; }
+    o.updatedAt = now; o.updatedBy = S.employee || '';
+    return o;
+  }
+  var STATUTS = [['a_faire', 'À faire'], ['fait', 'Fait'], ['probleme', 'Problème']];
+  var STATUT_LBL = { a_faire: 'À faire', fait: 'Fait', probleme: 'Problème' };
   function layerById(id) { return S.layers.find(function (l) { return l.id === id; }); }
   function layersById() { var o = {}; S.layers.forEach(function (l) { o[l.id] = l; }); return o; }
   function folderById(id) { return S.folders.find(function (f) { return f.id === id; }); }
@@ -63,6 +83,13 @@
   async function loadAll() {
     var r = await Promise.all([NavDB.listFolders(), NavDB.listCartes(), NavDB.listLayers(), NavDB.listWaypoints(), NavDB.listTraces()]);
     S.folders = r[0]; S.cartes = r[1]; S.layers = r[2]; S.wps = r[3]; S.traces = r[4];
+  }
+  // Donne un identifiant unique (et l'appareil d'origine) aux points et tracés créés avant la 5.2
+  async function ensureUids() {
+    var n = 0;
+    for (var i = 0; i < S.wps.length; i++) { var w = S.wps[i]; if (w.uid) continue; w.uid = w.imported && w.extId ? 'site:' + w.extId : newUid(); w.device = w.device || S.deviceId; w.author = w.author || ''; await NavDB.saveWaypoint(w); n++; }
+    for (var j = 0; j < S.traces.length; j++) { var t = S.traces[j]; if (t.uid) continue; t.uid = newUid(); t.device = t.device || S.deviceId; t.author = t.author || ''; await NavDB.saveTrace(t); n++; }
+    return n;
   }
   async function ensureActiveLayer() {
     if (S.activeLayerId && layerById(S.activeLayerId)) return S.activeLayerId;
@@ -284,7 +311,7 @@
     });
     S.wps.forEach(function (w) {
       if (!layerVisible(w.layerId)) return;
-      var icon = L.divIcon({ className: '', html: '<div class="wp-icon' + (S.navTarget === w.id ? ' target' : '') + '">' + wpIcon(w, 28) + '<div class="wp-label">' + esc(w.name) + '</div></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+      var icon = L.divIcon({ className: '', html: '<div class="wp-icon' + (S.navTarget === w.id ? ' target' : '') + (w.statut === 'fait' ? ' done' : '') + '">' + wpIcon(w, 28) + statutBadge(w) + '<div class="wp-label">' + esc(w.name) + '</div></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
       L.marker([w.lat, w.lon], { icon: icon, keyboard: false }).on('click', function () { if (S.mire) return; openWp(w.id, 'map'); }).addTo(S.wpGroup);
     });
     if (S.tracing && S.traceLine) S.traceLine.addTo(S.map);
@@ -449,7 +476,7 @@
   async function saveTracePts(pts, start) {
     var lid = await ensureActiveLayer(), n = S.traces.length + 1;
     var name = await askText('Nom du tracé', 'Tracé ' + n + ' – ' + fmtDay(new Date(start || Date.now()).toISOString()));
-    var t = { id: Date.now(), layerId: lid, name: name || ('Tracé ' + n), points: pts, timestamp: new Date(start || Date.now()).toISOString(), color: (layerById(lid) || {}).color || '#ff3d00', weight: 4 };
+    var t = stamp({ id: Date.now(), layerId: lid, name: name || ('Tracé ' + n), points: pts, timestamp: new Date(start || Date.now()).toISOString(), color: (layerById(lid) || {}).color || '#ff3d00', weight: 4 }, true);
     await NavDB.saveTrace(t); S.traces.push(t); renderOverlays();
     toast('« ' + t.name + ' » enregistré — ' + fmtDist(traceDist(pts)));
   }
@@ -514,18 +541,21 @@
     var w = wpById(id); if (!w) return;
     S.wpOpen = id; S.wpReturn = from || S.wpReturn || 'points';
     $('#view-wp').classList.add('active');
-    var l = layerById(w.layerId), cs = cartesFor(w), props = w.props || {}, pk = Object.keys(props);
+    var l = layerById(w.layerId), cs = cartesFor(w), props = w.props || {}, fk = ((l && l.fields) || []).map(function (f) { return f.key; }), pk = Object.keys(props).filter(function (k) { return fk.indexOf(k) < 0; });
     $('#wp-body').innerHTML =
       '<div class="photos" id="wp-photos" style="margin-top:8px">' + (w.photoIds || []).map(function () { return '<div class="photo"></div>'; }).join('') + '</div>' +
       '<h2 style="margin:14px 0 8px;font-size:26px;line-height:1.15;-webkit-user-select:text;user-select:text">' + esc(w.name) + '</h2>' +
       '<div class="wrap" style="margin-bottom:14px"><span class="chip">' + wpIcon(w, 22) + esc(NVSym.labelOf(w)) + '</span>' +
       (l ? '<span class="chip"><span class="dot" style="background:' + esc(l.color) + '"></span>' + esc(l.name) + '</span>' : '<span class="chip">Sans calque</span>') +
       (w.imported ? '<span class="chip">' + (w.modified ? 'Importé · modifié' : 'Importé') + '</span>' : '') + '</div>' +
+      '<div class="seg statut" style="margin-bottom:14px">' + STATUTS.map(function (x) { return '<button class="' + (w.statut === x[0] ? 'on st-' + x[0] : '') + '" data-act="setStatut" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      fieldsBlock(w, l) +
       '<div class="tiles" style="margin-bottom:14px"><div class="tile"><span>Distance</span><b id="wp-dist">—</b></div><div class="tile"><span>Cap</span><b id="wp-cap">—</b></div></div>' +
       '<dl class="kv"><dt>Position</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon)) + '</dd>' +
       (S.coordFmt !== 'dd' ? '<dt>Décimal</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon, 'dd')) + '</dd>' : '') +
       '<dt>Copier</dt><dd class="mono" style="-webkit-user-select:text;user-select:text">' + NVCoords.plain(w.lat, w.lon) + '</dd>' +
       '<dt>Créé</dt><dd>' + esc(fmtDate(w.timestamp)) + '</dd><dt>Cartes</dt><dd>' + (cs.length ? 'Visible sur ' + pl(cs.length, 'carte') + ' : ' + esc(cs.map(function (c) { return c.name; }).join(', ')) : 'Hors de vos cartes') + '</dd>' +
+      '<dt>Auteur</dt><dd>' + esc(w.author || (w.imported ? 'Bureau' : '—')) + (w.updatedBy && w.updatedBy !== w.author ? ' · modifié par ' + esc(w.updatedBy) : '') + '</dd>' +
       '<dt>Envoi</dt><dd>' + (w.sentAt ? 'Envoyé au bureau le ' + esc(fmtDate(w.sentAt)) : (w.imported && !w.modified ? 'Reçu du bureau' : 'Pas encore envoyé')) + '</dd></dl>' +
       (w.comment ? '<div class="note" style="margin-top:14px">' + esc(w.comment) + '</div>' : '') +
       (pk.length ? '<div class="section-h"><h2>Attributs du calque</h2></div><dl class="kv">' + pk.map(function (k) { return '<dt>' + esc(k) + '</dt><dd>' + esc(props[k]) + '</dd>'; }).join('') + '</dl>' : '');
@@ -533,6 +563,13 @@
     var photos = await NavDB.getPhotos(w);
     if (S.wpOpen !== id) return;
     $('#wp-photos').innerHTML = photos.map(function (p) { return '<button class="photo" data-act="viewPhoto" data-src="' + esc(p.id) + '"><img src="' + p.data + '" alt="Photo du point"></button>'; }).join('');
+  }
+  function fieldsBlock(w, l) {
+    var fs = (l && l.fields) || []; if (!fs.length) return '';
+    var p = w.props || {}, filled = fs.filter(function (f) { return p[f.key] != null && String(p[f.key]) !== ''; }).length;
+    return '<div class="note" style="margin-bottom:14px;white-space:normal"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Champs à remplir</b><span class="muted">' + filled + '/' + fs.length + '</span></div><dl class="kv">' +
+      fs.map(function (f) { var v = p[f.key]; return '<dt>' + esc(f.label) + '</dt><dd>' + (v != null && String(v) !== '' ? esc(v) : '<span class="muted">—</span>') + '</dd>'; }).join('') +
+      '</dl><button class="btn block" style="margin-top:10px" data-act="wpEdit">' + ic('edit', 'sm') + 'Remplir</button></div>';
   }
   function updateWpLive() {
     var w = wpById(S.wpOpen); if (!w || !$('#wp-dist')) return;
@@ -571,7 +608,8 @@
     var lid = wp ? wp.layerId : await ensureActiveLayer();
     var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', sym: S.lastSym || 'point', color: null, layerId: lid, lat: latlng.lat, lon: latlng.lon };
     var photos = wp ? (await NavDB.getPhotos(wp)).map(function (p) { return { id: p.id, data: p.data }; }) : [];
-    S.form = { edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: S.coordFmt, showCoords: !!(latlng && latlng.manual) };
+    base.props = Object.assign({}, base.props || {});
+    S.form = { origStatut: base.statut || '', edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: S.coordFmt, showCoords: !!(latlng && latlng.manual) };
     $('#wpf-title').textContent = wp ? 'Modifier le point' : 'Nouveau point';
     $('#view-wpform').classList.add('active');
     renderWpForm();
@@ -583,6 +621,7 @@
     if (g('wpf-comment') != null) f.wp.comment = g('wpf-comment');
     if (g('wpf-layer') != null && g('wpf-layer') !== '__new') f.wp.layerId = g('wpf-layer') || null;
     if (g('wpf-color') != null && f.colorTouched) f.wp.color = g('wpf-color');
+    document.querySelectorAll('#wpf-body input[data-k]').forEach(function (inp) { f.wp.props = f.wp.props || {}; var v = inp.value.trim(); if (v === '') delete f.wp.props[inp.dataset.k]; else f.wp.props[inp.dataset.k] = inp.inputMode === 'decimal' && !isNaN(parseFloat(v.replace(',', '.'))) ? parseFloat(v.replace(',', '.')) : v; });
   }
   function coordInputs(fmt, lat, lon) {
     var inp = function (id, val, lbl, mode) { return '<input class="input mono" id="' + id + '" inputmode="' + (mode || 'decimal') + '" value="' + val + '" aria-label="' + lbl + '">'; };
@@ -610,6 +649,18 @@
     }).join('') + '</div></div>';
     html += '<div class="field"><span>Couleur</span><div class="wrap" style="align-items:center"><label class="sym" style="position:relative;overflow:hidden;width:auto;padding:0 14px;gap:10px" aria-label="Couleur"><span style="width:28px;height:28px;border-radius:14px;background:' + esc(col) + ';border:2px solid #fff"></span>Changer<input type="color" id="wpf-color" value="' + esc(col) + '" data-act-change="fColor" style="position:absolute;inset:0;opacity:0"></label>' +
       (w.color ? '<button class="btn" style="min-height:52px" data-act="fColorReset">Couleur du symbole</button>' : '') + '</div></div>';
+    html += '<div class="field"><span>Statut</span><div class="seg statut"><button class="' + (!w.statut ? 'on' : '') + '" data-act="fStatut" data-id="">Aucun</button>' + STATUTS.map(function (x) { return '<button class="' + (w.statut === x[0] ? 'on st-' + x[0] : '') + '" data-act="fStatut" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div></div>';
+    var lay = layerById(w.layerId), fs = (lay && lay.fields) || [], pv = w.props || {};
+    if (fs.length) {
+      html += '<div class="field"><span>Champs du calque « ' + esc(lay.name) + ' »</span><div style="display:flex;flex-direction:column;gap:12px">' + fs.map(function (fd, i) {
+        var v = pv[fd.key] == null ? '' : String(pv[fd.key]), lab = '<span style="font-size:15px;font-weight:700">' + esc(fd.label) + '</span>';
+        if (fd.type === 'choix' || fd.type === 'ouinon') {
+          var ch = fd.type === 'ouinon' ? ['Oui', 'Non'] : fd.choices;
+          return '<div style="display:flex;flex-direction:column;gap:6px">' + lab + '<div class="wrap">' + ch.map(function (c) { return '<button class="chip' + (v === c ? ' on' : '') + '" data-act="fChoice" data-k="' + esc(fd.key) + '" data-v="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div></div>';
+        }
+        return '<label style="display:flex;flex-direction:column;gap:6px">' + lab + '<input class="input" id="wpf-f-' + i + '" data-k="' + esc(fd.key) + '" value="' + esc(v) + '"' + (fd.type === 'nombre' ? ' inputmode="decimal"' : '') + '></label>';
+      }).join('') + '</div></div>';
+    }
     html += '<div class="field"><span>Photos</span><div class="photos">' + f.photos.map(function (p, i) { return '<div class="photo"><img src="' + p.data + '" alt=""><button class="del" data-act="fPhotoDel" data-i="' + i + '" aria-label="Retirer la photo">' + ic('x', 'sm') + '</button></div>'; }).join('') +
       '<button class="photo-add" data-act="fPhotoAdd">' + ic('camera') + 'Ajouter</button></div></div>';
     html += '<label class="field"><span>Commentaire</span><textarea class="input" id="wpf-comment" rows="3">' + esc(w.comment) + '</textarea></label>';
@@ -640,8 +691,9 @@
     var f = S.form, w = f.wp;
     if (f.showCoords && !readCoords()) return;
     w.name = (w.name || '').trim() || ('WP-' + (S.wps.length + 1)); w.comment = (w.comment || '').trim();
-    if (!f.edit) { w.id = Date.now(); w.timestamp = new Date().toISOString(); w.photoIds = []; }
-    else { w.sentAt = null; if (w.imported) w.modified = true; }
+    if (!f.edit) { w.id = Date.now(); w.timestamp = new Date().toISOString(); w.photoIds = []; stamp(w, true); }
+    else { w.sentAt = null; if (w.imported) w.modified = true; stamp(w); }
+    if (w.statut !== f.origStatut) w.statutAt = new Date().toISOString();
     if (w.sym) S.lastSym = w.sym;
     for (var i = 0; i < f.removed.length; i++) await NavDB.deletePhoto(f.removed[i]);
     var ids = [];
@@ -688,7 +740,9 @@
     else {
       html += '<div class="list">' + S.layers.map(function (l) {
         var nw = S.wps.filter(function (w) { return w.layerId === l.id; }).length, nt = S.traces.filter(function (t) { return t.layerId === l.id; }).length, vis = l.visible !== false;
-        return '<div class="row"><span class="dot" style="width:18px;height:18px;border-radius:9px;background:' + esc(l.color) + '"></span><span class="main"><span class="t">' + esc(l.name) + (S.activeLayerId === l.id ? ' <span class="badge">actif</span>' : '') + '</span><span class="s">' + pl(nw, 'point') + ' · ' + pl(nt, 'tracé') + (l.source ? ' · importé ' + esc(fmtDay(l.importedAt)) : '') + '</span></span>' +
+        var lw = S.wps.filter(function (w) { return w.layerId === l.id; }), st = lw.filter(function (w) { return w.statut; }), done = st.filter(function (w) { return w.statut === 'fait'; }).length, pb = st.filter(function (w) { return w.statut === 'probleme'; }).length;
+        var prog = st.length ? ' · ' + done + '/' + st.length + ' faits' + (pb ? ' · ' + pl(pb, 'problème') : '') : '';
+        return '<div class="row"><span class="dot" style="width:18px;height:18px;border-radius:9px;background:' + esc(l.color) + '"></span><span class="main"><span class="t">' + esc(l.name) + (S.activeLayerId === l.id ? ' <span class="badge">actif</span>' : '') + '</span><span class="s">' + pl(nw, 'point') + ' · ' + pl(nt, 'tracé') + prog + ((l.fields || []).length ? ' · ' + pl(l.fields.length, 'champ') : '') + '</span></span>' +
           '<button class="more" data-act="layerVis" data-id="' + esc(l.id) + '" aria-label="' + (vis ? 'Masquer' : 'Afficher') + ' le calque" style="color:' + (vis ? 'var(--text)' : 'var(--muted)') + '">' + ic(vis ? 'eye' : 'eyeoff') + '</button>' +
           '<button class="more" data-act="layerMenu" data-id="' + esc(l.id) + '" aria-label="Actions du calque">' + ic('more') + '</button></div>';
       }).join('') + '</div>';
@@ -697,6 +751,7 @@
     if (S.ptsMode === 'points') {
       var used = {}; S.wps.forEach(function (w) { used[NVSym.idOf(w)] = true; });
       html += '<label class="search" style="margin:0 0 8px">' + ic('search', 'sm muted') + '<span class="sr">Rechercher</span><input type="search" id="pts-search" placeholder="Rechercher un point" value="' + esc(S.ptsQuery) + '" autocomplete="off"></label>';
+      html += '<div class="chips"><button class="chip' + (!S.ptsStat ? ' on' : '') + '" data-act="ptsStat" data-id="">Tous statuts</button>' + STATUTS.map(function (x) { var n = S.wps.filter(function (w) { return w.statut === x[0]; }).length; return '<button class="chip' + (S.ptsStat === x[0] ? ' on' : '') + '" data-act="ptsStat" data-id="' + x[0] + '"><span class="dot st-dot-' + x[0] + '"></span>' + x[1] + ' (' + n + ')</button>'; }).join('') + '</div>';
       html += '<div class="chips"><button class="chip' + (!S.ptsSym ? ' on' : '') + '" data-act="ptsSym" data-id="">Tous</button>' + NVSym.LIST.filter(function (x) { return used[x.id]; }).map(function (x) { return '<button class="chip' + (S.ptsSym === x.id ? ' on' : '') + '" data-act="ptsSym" data-id="' + x.id + '">' + NVSym.svg(x.id, null, 22) + esc(x.short) + '</button>'; }).join('') + '</div>';
     }
     html += '<div id="pts-list" style="margin-top:6px"></div>';
@@ -715,12 +770,12 @@
       return;
     }
     var q = S.ptsQuery.trim().toLowerCase();
-    var ws = S.wps.filter(function (w) { return (!S.ptsSym || NVSym.idOf(w) === S.ptsSym) && (!q || (w.name || '').toLowerCase().indexOf(q) >= 0 || (w.comment || '').toLowerCase().indexOf(q) >= 0); });
+    var ws = S.wps.filter(function (w) { return (!S.ptsStat || w.statut === S.ptsStat) && (!S.ptsSym || NVSym.idOf(w) === S.ptsSym) && (!q || (w.name || '').toLowerCase().indexOf(q) >= 0 || (w.comment || '').toLowerCase().indexOf(q) >= 0); });
     if (S.pos) ws.sort(function (a, b) { return hav(S.pos, a) - hav(S.pos, b); }); else ws.sort(function (a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
     var shown = ws.slice(0, 300);
     box.innerHTML = shown.length ? '<div class="list">' + shown.map(function (w) {
       var l = layerById(w.layerId), sym = NVSym.BY[NVSym.idOf(w)];
-      return '<button class="row" data-act="openWp" data-id="' + w.id + '">' + wpIcon(w, 30) + '<span class="main"><span class="t">' + esc(w.name) + '</span><span class="s">' + esc(sym.short) + (l ? ' · ' + esc(l.name) : '') + ((w.photoIds || []).length ? ' · ' + pl(w.photoIds.length, 'photo') : '') + (!w.sentAt && (!w.imported || w.modified) ? ' · à envoyer' : '') + '</span></span>' +
+      return '<button class="row" data-act="openWp" data-id="' + w.id + '">' + wpIcon(w, 30) + '<span class="main"><span class="t">' + esc(w.name) + '</span><span class="s">' + (w.statut ? esc(STATUT_LBL[w.statut]) + ' · ' : '') + esc(sym.short) + (l ? ' · ' + esc(l.name) : '') + ((w.photoIds || []).length ? ' · ' + pl(w.photoIds.length, 'photo') : '') + (!w.sentAt && (!w.imported || w.modified) ? ' · à envoyer' : '') + '</span></span>' +
         (S.pos ? '<span class="n">' + fmtDist(hav(S.pos, w)) + '</span>' : '') + ic('chev', 'sm muted') + '</button>';
     }).join('') + '</div>' + (ws.length > 300 ? '<p class="muted">' + (ws.length - 300) + ' autres points : affinez la recherche.</p>' : '') :
       '<div class="empty">' + (S.wps.length ? 'Aucun point ne correspond.' : 'Aucun point. Ajoutez-en un avec le bouton <b>Point</b> sur la carte.') + '</div>';
@@ -738,6 +793,26 @@
     opts.push({ label: 'Nouveau calque…', icon: 'plus', fn: async function () { var n = await askText('Nouveau calque', '', 'ex. Frayères 2026'); if (!n) return; var l = await NavDB.saveLayer({ name: n }); S.layers.push(l); cb(l.id); } });
     sheetOptions('Choisir le calque', null, opts);
   }
+  function fieldEditor(l) {
+    var fs = l.fields || [], TL = { texte: 'Texte', nombre: 'Nombre', choix: 'Choix', ouinon: 'Oui / Non' };
+    var html = '<h3>Champs à remplir — ' + esc(l.name) + '</h3><p>Les employés les remplissent dans chaque point de ce calque. Ils voyagent avec « Partager comme calque de suivi ».</p><div class="opts">';
+    var fns = [];
+    fs.forEach(function (f, i) {
+      fns.push(async function () { if (!await confirmSheet('Retirer « ' + f.label + ' » ?', 'Les valeurs déjà saisies restent dans les points.', 'Retirer', true)) { fieldEditor(l); return; } l.fields.splice(i, 1); await NavDB.saveLayer(l); refreshAfterData(); fieldEditor(l); });
+      html += '<button class="btn" data-act="sheetOpt" data-i="' + (fns.length - 1) + '">' + ic('trash', 'sm') + '<span>' + esc(f.label) + '<span class="s">' + TL[f.type] + (f.type === 'choix' ? ' : ' + esc((f.choices || []).join(', ')) : '') + ' — toucher pour retirer</span></span></button>';
+    });
+    fns.push(async function () {
+      var name = await askText('Nouveau champ', '', 'ex. Hauteur d\'eau (cm)'); if (!name) { fieldEditor(l); return; }
+      sheetOptions('Type de « ' + name + ' »', null, ['texte', 'nombre', 'choix', 'ouinon'].map(function (t) { return { label: TL[t], fn: async function () {
+        var choices = [];
+        if (t === 'choix') { var c = await askText('Choix possibles', '', 'séparés par des virgules : actif, inactif, démantelé'); if (!c) { fieldEditor(l); return; } choices = c.split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
+        var key = NVImport.slugKey(name), k = 2; while ((l.fields || []).some(function (f) { return f.key === key; })) key = NVImport.slugKey(name) + '_' + (k++);
+        l.fields = (l.fields || []).concat([{ key: key, label: name, type: t, choices: choices }]); await NavDB.saveLayer(l); refreshAfterData(); fieldEditor(l);
+      } }; }));
+    });
+    html += '<button class="btn primary" data-act="sheetOpt" data-i="' + (fns.length - 1) + '">' + ic('plus') + '<span>Ajouter un champ</span></button><button class="btn" data-act="closeSheet">Terminé</button></div>';
+    openSheet(html, fns);
+  }
   function refreshAfterData() { renderOverlays(); if ($('#view-points').classList.contains('active')) renderPoints(); }
   function layerMenu(l) {
     var nw = S.wps.filter(function (w) { return w.layerId === l.id; }).length, nt = S.traces.filter(function (t) { return t.layerId === l.id; }).length;
@@ -745,6 +820,11 @@
       { label: 'Calque actif pour les nouveaux points', icon: 'check', cls: S.activeLayerId === l.id ? 'primary' : '', fn: async function () { S.activeLayerId = l.id; await NavDB.setMeta('activeLayerId', l.id); renderPoints(); } },
       { label: 'Renommer', icon: 'edit', fn: async function () { var n = await askText('Renommer le calque', l.name); if (!n) return; l.name = n; await NavDB.saveLayer(l); renderPoints(); } },
       { label: 'Changer la couleur', icon: 'layers', fn: function () { sheetOptions('Couleur du calque', 'S\'applique aux nouveaux tracés de ce calque.', LCOLORS.map(function (c) { return { label: c, cls: c === l.color ? 'primary' : '', fn: async function () { l.color = c; await NavDB.saveLayer(l); renderPoints(); } }; })); } },
+      { label: 'Champs à remplir…', sub: (l.fields || []).length ? (l.fields || []).map(function (f) { return f.label; }).join(', ') : 'Aucun champ défini', icon: 'edit', fn: function () { fieldEditor(l); } },
+      { label: 'Partager comme calque de suivi', sub: 'GeoJSON avec ses champs, à importer sur un autre téléphone', icon: 'share', fn: function () {
+        var w = S.wps.filter(function (x) { return x.layerId === l.id; }), t = S.traces.filter(function (x) { return x.layerId === l.id; });
+        deliver(NVExport.geojson(w, t, layersById(), l.name, { version: 1, calque: l.name, champs: (l.fields || []).map(function (f) { return { cle: f.key, nom: f.label, type: f.type, choix: f.choices || [] }; }) }));
+      } },
       { label: 'Exporter ce calque', icon: 'download', fn: function () { exportFormat({ label: l.name, wps: S.wps.filter(function (w) { return w.layerId === l.id; }), trs: S.traces.filter(function (t) { return t.layerId === l.id; }) }); } },
       { label: 'Supprimer le calque', icon: 'trash', cls: 'danger', fn: async function () {
         if (!await confirmSheet('Supprimer « ' + l.name + ' » ?', 'Ses ' + nw + ' points (avec leurs photos) et ' + nt + ' tracés seront supprimés définitivement. Exportez-le d\'abord si vous voulez les garder.', 'Supprimer tout', true)) return;
@@ -900,7 +980,8 @@
       var p = data.points[i], ex = byExt[p.extId]; seen[p.extId] = true;
       if (ex && ex.modified) { kept++; continue; } // modifié sur le terrain : on ne l'écrase pas
       var w = ex || { id: now + (k++), photoIds: [], timestamp: new Date().toISOString(), imported: true, layerId: l.id };
-      Object.assign(w, { extId: p.extId, name: p.name, comment: p.comment, lat: p.lat, lon: p.lon, sym: p.sym || (ex && ex.sym) || 'point', color: p.color || null, props: p.props, layerId: l.id, imported: true, modified: false });
+      Object.assign(w, { extId: p.extId, uid: 'site:' + p.extId, name: p.name, comment: p.comment, lat: p.lat, lon: p.lon, sym: p.sym || (ex && ex.sym) || 'point', color: p.color || null, props: p.props, layerId: l.id, imported: true, modified: false,
+        statut: p.statut || (ex && ex.statut) || 'a_faire', author: '', device: '' });
       await NavDB.saveWaypoint(w);
       if (ex) updated++; else { S.wps.push(w); added++; }
     }
@@ -911,8 +992,12 @@
     for (var a = 0; a < oldT.length; a++) { await NavDB.deleteTrace(oldT[a].id); }
     S.traces = S.traces.filter(function (t) { return !(t.layerId === l.id && t.imported); });
     for (var b = 0; b < data.lines.length; b++) {
-      var ln = data.lines[b], t = { id: now + 100000 + b, layerId: l.id, name: ln.name, points: ln.points.map(function (q) { return { lat: q.lat, lon: q.lon }; }), timestamp: new Date().toISOString(), color: l.color, weight: 3, imported: true, extId: ln.extId };
+      var ln = data.lines[b], t = { id: now + 100000 + b, uid: 'ligne:' + l.name + ':' + ln.extId, layerId: l.id, name: ln.name, points: ln.points.map(function (q) { return { lat: q.lat, lon: q.lon }; }), timestamp: new Date().toISOString(), color: l.color, weight: 3, imported: true, extId: ln.extId };
       await NavDB.saveTrace(t); S.traces.push(t);
+    }
+    if (data.fields && data.fields.length) {
+      if (data.fieldsExplicit || !(l.fields || []).length) l.fields = data.fields;
+      else data.fields.forEach(function (f) { if (!l.fields.some(function (x) { return x.key === f.key; })) l.fields.push(f); });
     }
     l.source = data.fileName; l.importedAt = new Date().toISOString(); await NavDB.saveLayer(l);
     renderOverlays(); if ($('#view-points').classList.contains('active')) renderPoints();
@@ -961,6 +1046,64 @@
     } catch (e) { toast('Envoi impossible : ' + e.message, 5000); }
   }
 
+  // ══════════════ Sauvegarde complète et restauration ══════════════
+  function dataUrlBytes(d) { var b = atob(d.split(',')[1]), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  async function backupFull() {
+    toast('Préparation de la sauvegarde…', 30000);
+    try {
+      var zip = new JSZip(), ph = zip.folder('photos'), nPh = 0;
+      for (var i = 0; i < S.wps.length; i++) {
+        var photos = await NavDB.getPhotos(S.wps[i]);
+        photos.forEach(function (p) { ph.file(String(p.id).replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg', dataUrlBytes(p.data), { binary: true }); nPh++; });
+      }
+      var data = { format: 'navenza-sauvegarde', version: 1, app: APP_VERSION, date: new Date().toISOString(), employee: S.employee, device: S.deviceId,
+        folders: S.folders, layers: S.layers, waypoints: S.wps, traces: S.traces,
+        cartes: S.cartes.map(function (c) { return { id: c.id, name: c.name, fileName: c.fileName, folderId: c.folderId, kind: c.kind, bytes: c.bytes }; }),
+        settings: { theme: S.theme, coordFmt: S.coordFmt, employee: S.employee, officeEmail: S.officeEmail, activeLayerId: S.activeLayerId } };
+      zip.file('navenza.json', JSON.stringify(data));
+      zip.file('LISEZMOI.txt', 'Sauvegarde NAVenza MAP ' + APP_VERSION + ' du ' + fmtDate(data.date) + '\n' + pl(S.wps.length, 'point') + ', ' + pl(nPh, 'photo') + ', ' + pl(S.traces.length, 'tracé') + ', ' + pl(S.layers.length, 'calque') + '.\nLes fichiers de cartes (PDF, GeoTIFF) ne sont pas inclus : réimportez-les au besoin.\nPour restaurer : Réglages > Restaurer une sauvegarde.\n');
+      var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 4 }, mimeType: 'application/zip' });
+      var name = 'navenza_sauvegarde_' + (S.employee ? NVImport.slugKey(S.employee) + '_' : '') + new Date().toISOString().slice(0, 10) + '.zip';
+      await NavDB.setMeta('lastBackup', data.date);
+      deliver([{ blob: blob, name: name }]);
+    } catch (e) { toast('Sauvegarde impossible : ' + e.message, 6000); }
+  }
+  async function restoreFile(file) {
+    var data, zip;
+    try {
+      zip = await JSZip.loadAsync(await file.arrayBuffer());
+      var j = zip.file('navenza.json'); if (!j) throw new Error('ce fichier n\'est pas une sauvegarde NAVenza');
+      data = JSON.parse(await j.async('string'));
+      if (data.format !== 'navenza-sauvegarde') throw new Error('format de sauvegarde inconnu');
+    } catch (e) { await confirmSheet('Restauration impossible', file.name + ' : ' + (e && e.message || e), 'OK'); return; }
+    var nw = (data.waypoints || []).length, nt = (data.traces || []).length;
+    if (!await confirmSheet('Restaurer cette sauvegarde ?', 'Du ' + fmtDate(data.date) + (data.employee ? ' (' + data.employee + ')' : '') + ' : ' + pl(nw, 'point') + ', ' + pl(nt, 'tracé') + ', ' + pl((data.layers || []).length, 'calque') + '. Rien n\'est effacé : seuls les éléments absents de cet appareil sont ajoutés.', 'Restaurer')) return;
+    toast('Restauration…', 30000);
+    var add = { f: 0, l: 0, w: 0, t: 0, p: 0, skip: 0 };
+    try {
+      for (var a = 0; a < (data.folders || []).length; a++) { var f = data.folders[a]; if (!folderById(f.id)) { await NavDB.saveFolder(f); add.f++; } }
+      for (var b = 0; b < (data.layers || []).length; b++) { var l = data.layers[b]; if (!layerById(l.id)) { await NavDB.saveLayer(l); add.l++; } }
+      var uids = {}, ids = {}; S.wps.forEach(function (w) { if (w.uid) uids[w.uid] = true; ids[w.id] = true; });
+      for (var c = 0; c < (data.waypoints || []).length; c++) {
+        var w = Object.assign({}, data.waypoints[c]);
+        if ((w.uid && uids[w.uid]) || (!w.uid && ids[w.id])) { add.skip++; continue; }
+        var oldPh = w.photoIds || [];
+        if (ids[w.id]) w.id = Date.now() + c;
+        w.photoIds = [];
+        for (var k = 0; k < oldPh.length; k++) {
+          var pf = zip.file('photos/' + String(oldPh[k]).replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg');
+          if (pf) { w.photoIds.push(await NavDB.addPhoto(w.id, 'data:image/jpeg;base64,' + await pf.async('base64'))); add.p++; }
+        }
+        await NavDB.saveWaypoint(w); add.w++;
+      }
+      var tu = {}; S.traces.forEach(function (t) { tu[t.uid || ('#' + t.id)] = true; });
+      for (var d = 0; d < (data.traces || []).length; d++) { var t = data.traces[d]; if (tu[t.uid || ('#' + t.id)]) { add.skip++; continue; } await NavDB.saveTrace(t); add.t++; }
+      await loadAll(); renderOverlays();
+      if ($('#view-reglages').classList.contains('active')) renderSettings();
+      sheetOptions('Restauration terminée', 'Ajoutés : ' + pl(add.w, 'point') + ' (' + pl(add.p, 'photo') + '), ' + pl(add.t, 'tracé') + ', ' + pl(add.l, 'calque') + ', ' + pl(add.f, 'dossier') + '. Déjà présents (ignorés) : ' + add.skip + '. Les cartes elles-mêmes ne sont pas dans la sauvegarde.', [{ label: 'OK', cls: 'primary', fn: function () {} }], true);
+    } catch (e) { toast('Restauration interrompue : ' + e.message, 6000); await loadAll(); }
+  }
+
   // ══════════════ Réglages ══════════════
   var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
     'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
@@ -990,8 +1133,12 @@
       '<div class="row"><span class="main"><span class="t" style="color:' + (offlineState.ok ? 'var(--ok)' : 'var(--accent-text)') + '">' + esc(offlineState.msg) + '</span><span class="s">Application et bibliothèques en cache sur l\'appareil</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + (est && est.usage != null ? fmtSize(est.usage) + ' utilisés' : 'Espace utilisé inconnu') + '</span><span class="s wrap-ok">' + (est && est.quota ? 'Espace disponible pour l\'app : environ ' + fmtSize(est.quota) : 'Quota non communiqué par le système') + (persisted === true ? ' · stockage protégé' : (persisted === false ? ' · stockage non garanti par le système' : '')) + '</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + pl(S.cartes.length, 'carte') + ' · ' + pl(S.folders.length, 'dossier') + '</span><span class="s">' + pl(S.wps.length, 'point') + ' · ' + pl(S.traces.length, 'tracé') + ' · ' + pl(S.layers.length, 'calque') + '</span></span></div></div>';
-    html += '<div class="section-h"><h2>Sauvegarde</h2></div><button class="btn block" data-act="backup">' + ic('download') + 'Copie de sécurité complète (GeoJSON)</button>' +
-      '<p class="muted" style="font-size:14px;line-height:1.4">Tous les points et tracés, avec leur calque, leur symbole et leurs attributs. Les photos ne sont incluses que dans l\'export KMZ.</p>';
+    var lb = await NavDB.getMeta('lastBackup');
+    html += '<div class="section-h"><h2>Sauvegarde</h2></div><div style="display:flex;flex-direction:column;gap:10px">' +
+      '<button class="btn block primary" data-act="backupFull">' + ic('download') + 'Sauvegarde complète (.zip, avec photos)</button>' +
+      '<button class="btn block" data-act="restore">' + ic('undo') + 'Restaurer une sauvegarde</button>' +
+      '<button class="btn block" data-act="backup">' + ic('download') + 'Copie GeoJSON (sans photos)</button></div>' +
+      '<p class="muted" style="font-size:14px;line-height:1.4">' + (lb ? 'Dernière sauvegarde : ' + esc(fmtDate(lb)) + '. ' : 'Aucune sauvegarde complète encore. ') + 'La sauvegarde contient points, photos, tracés, calques, dossiers et réglages, mais pas les fichiers de cartes. La restauration n\'efface rien : elle ajoute seulement ce qui manque. Elle sert aussi à transférer les données vers un nouveau téléphone.</p>';
     if (mig) html += '<div class="section-h"><h2>Mise à jour v3</h2></div><p class="muted" style="font-size:14px;line-height:1.4">Données converties le ' + esc(fmtDate(mig.date)) + ' : ' + pl(mig.dossiers, 'dossier') + ', ' + pl(mig.cartes, 'carte') + ', ' + pl(mig.calques, 'calque') + ', ' + pl(mig.points, 'point') + ', ' + pl(mig.photos, 'photo') + ', ' + pl(mig.traces, 'tracé') + '.</p>';
     html += '<div class="section-h"><h2>À propos</h2></div><p class="muted" style="font-size:14px;line-height:1.5">NAVenza MAP ' + APP_VERSION + ' — navigation terrain hors réseau, Réserve faunique Duchénier.<br>Polices Atkinson Hyperlegible et IBM Plex Mono (licence SIL OFL 1.1). Leaflet, pdf.js, UTIF.js, JSZip.</p>';
     $('#set-body').innerHTML = html;
@@ -1088,7 +1235,7 @@
     measure: function () { if (S.mire === 'measure') exitMire(); else enterMire('measure'); },
     exitMire: exitMire, measureAdd: measureAdd, measureUndo: measureUndo,
     mireWp: function () { var c = ll(S.map.getCenter()); exitMire(); openWpForm(null, c); },
-    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.sentAt = null; if (w.imported) w.modified = true; await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
+    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.sentAt = null; if (w.imported) w.modified = true; stamp(w); await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
     // Points
     openWp: function (el) { openWp(+el.dataset.id, 'points'); },
     closeWp: closeWp,
@@ -1123,8 +1270,18 @@
     layerMenu: function (el) { layerMenu(layerById(el.dataset.id)); },
     ptsMode: function (el) { S.ptsMode = el.dataset.id; renderPoints(); },
     ptsSym: function (el) { S.ptsSym = el.dataset.id; renderPoints(); },
+    ptsStat: function (el) { S.ptsStat = el.dataset.id; renderPoints(); },
+    setStatut: async function (el) {
+      var w = wpById(S.wpOpen); if (!w) return; var v = el.dataset.id;
+      w.statut = w.statut === v ? '' : v; w.statutAt = new Date().toISOString(); w.sentAt = null; if (w.imported) w.modified = true; stamp(w);
+      await NavDB.saveWaypoint(w); renderOverlays(); openWp(w.id); toast(w.statut ? 'Statut : ' + STATUT_LBL[w.statut] : 'Statut retiré');
+    },
+    fStatut: function (el) { syncForm(); S.form.wp.statut = el.dataset.id; renderWpForm(); },
+    fChoice: function (el) { syncForm(); var p = S.form.wp.props = S.form.wp.props || {}; if (p[el.dataset.k] === el.dataset.v) delete p[el.dataset.k]; else p[el.dataset.k] = el.dataset.v; renderWpForm(); },
     traceMenu: function (el) { var t = S.traces.find(function (x) { return x.id === +el.dataset.id; }); if (t) traceMenu(t); },
     exportMenu: exportMenu,
+    backupFull: backupFull,
+    restore: function () { $('#file-restore').click(); },
     backup: function () { deliver(NVExport.geojson(S.wps, S.traces, layersById(), 'sauvegarde complete')); },
     setTheme: function (el) { applyTheme(el.dataset.id); NavDB.setMeta('theme', el.dataset.id); renderSettings(); },
     ovFolder: function (el) { S.ovFolder = el.dataset.id; S.ovFirst = true; renderOverview(); },
@@ -1137,6 +1294,7 @@
   });
   document.addEventListener('change', async function (e) {
     var a = e.target.dataset.actChange;
+    if (a === 'layerSelect' && e.target.value !== '__new') { syncForm(); renderWpForm(); return; }
     if (a === 'layerSelect' && e.target.value === '__new') {
       syncForm(); var n = await askText('Nouveau calque', '', 'ex. Frayères 2026');
       if (n) { var l = await NavDB.saveLayer({ name: n }); S.layers.push(l); S.form.wp.layerId = l.id; }
@@ -1149,6 +1307,7 @@
     if (e.target.id === 'pts-search') { S.ptsQuery = e.target.value; renderPtsList(); }
   });
   $('#file-import').addEventListener('change', function (e) { var files = Array.from(e.target.files || []); e.target.value = ''; if (files.length) importFiles(files); });
+  $('#file-restore').addEventListener('change', function (e) { var f = (e.target.files || [])[0]; e.target.value = ''; if (f) restoreFile(f); });
   $('#file-layer').addEventListener('change', function (e) { var f = (e.target.files || [])[0]; e.target.value = ''; if (f) importLayerFile(f); });
   $('#file-photo').addEventListener('change', async function (e) {
     var files = Array.from(e.target.files || []); e.target.value = '';
@@ -1168,8 +1327,10 @@
     catch (e) { bootMsg(e.message, true, true); return; }
     applyTheme((await NavDB.getMeta('theme')) || 'sombre');
     await loadAll();
+    S.deviceId = await NavDB.getMeta('deviceId'); if (!S.deviceId) { S.deviceId = newUid(); await NavDB.setMeta('deviceId', S.deviceId); }
     S.activeLayerId = (await NavDB.getMeta('activeLayerId')) || null;
     S.coordFmt = (await NavDB.getMeta('coordFmt')) || 'dd'; S.employee = (await NavDB.getMeta('employee')) || ''; S.officeEmail = (await NavDB.getMeta('officeEmail')) || 'faune@terfa.ca';
+    try { await ensureUids(); } catch (e) { console.warn('[app] uid :', e); }
     startGPS();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(function (r) { try { r.update(); } catch (e) {} }).catch(function (e) { console.warn('SW :', e); });

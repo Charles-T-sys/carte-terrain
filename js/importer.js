@@ -7,6 +7,25 @@
   var SYM_KEYS = ['symbole', 'symbol', 'sym', 'type', 'categorie', 'catégorie', 'category', 'SYMBOLE', 'TYPE'];
   var COLOR_KEYS = ['couleur', 'color', 'colour', 'COULEUR', 'COLOR'];
   var ID_KEYS = ['id', 'fid', 'ID', 'FID', 'id_site', 'identifiant', 'code'];
+  var STATUT_KEYS = ['statut', 'STATUT', 'status', 'etat_visite'];
+  function normStatut(v) {
+    if (v == null) return null;
+    var t = String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    if (!t) return null;
+    if (/^(fait|faite|done|complete|termine|visite)/.test(t)) return 'fait';
+    if (/^(probleme|pb|issue|anomalie)/.test(t)) return 'probleme';
+    if (/^(a[ _-]?faire|todo|a visiter|nouveau)/.test(t)) return 'a_faire';
+    return null;
+  }
+  function slugKey(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'champ'; }
+  // Définitions de champs : membre « navenza.champs » du GeoJSON
+  function readFields(nv) {
+    if (!nv || !Array.isArray(nv.champs)) return null;
+    return nv.champs.map(function (c) {
+      var type = { texte: 'texte', text: 'texte', nombre: 'nombre', number: 'nombre', choix: 'choix', choice: 'choix', ouinon: 'ouinon', 'oui/non': 'ouinon', bool: 'ouinon' }[String(c.type || 'texte').toLowerCase()] || 'texte';
+      return { key: c.cle || c.key || slugKey(c.nom || c.label), label: c.nom || c.label || c.cle || c.key, type: type, choices: Array.isArray(c.choix || c.choices) ? (c.choix || c.choices).map(String) : [] };
+    }).filter(function (c) { return c.key; });
+  }
   function pick(o, keys) { for (var i = 0; i < keys.length; i++) if (o[keys[i]] != null && String(o[keys[i]]).trim() !== '') return String(o[keys[i]]).trim(); return null; }
   function stripHtml(s) { return s ? String(s).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim() : ''; }
   function checkLL(lat, lon) {
@@ -22,12 +41,12 @@
     Object.keys(props).forEach(function (k) {
       var v = props[k];
       if (v == null || v === '' || typeof v === 'object') return;
-      if (NAME_KEYS.concat(COMMENT_KEYS, COLOR_KEYS).indexOf(k) >= 0) return;
+      if (NAME_KEYS.concat(COMMENT_KEYS, COLOR_KEYS, STATUT_KEYS).indexOf(k) >= 0) return;
       extra[k] = v;
     });
     return { extId: pick(props, ID_KEYS) || (name + '@' + lat.toFixed(5) + ',' + lon.toFixed(5)), name: name,
       comment: stripHtml(pick(props, COMMENT_KEYS)), lat: lat, lon: lon,
-      sym: (window.NVSym && NVSym.match(symTxt)) || null, color: col && /^#[0-9a-f]{6}$/i.test(col) ? col : null, props: extra };
+      sym: (window.NVSym && NVSym.match(symTxt)) || null, color: col && /^#[0-9a-f]{6}$/i.test(col) ? col : null, props: extra, statut: normStatut(pick(props, STATUT_KEYS)) };
   }
   function lineFrom(coords, props, idx) {
     var pts = coords.map(function (c) { checkLL(c[1], c[0]); return { lat: c[1], lon: c[0] }; });
@@ -36,7 +55,8 @@
   }
 
   function fromGeoJSON(gj) {
-    var out = { name: gj.name || null, points: [], lines: [] };
+    var out = { name: gj.name || null, points: [], lines: [], fields: readFields(gj.navenza) };
+    out.fieldsExplicit = !!out.fields;
     if (gj.crs && gj.crs.properties && gj.crs.properties.name && !/4326|CRS84/i.test(gj.crs.properties.name))
       throw new Error('le fichier est en ' + gj.crs.properties.name + '. Dans QGIS, exportez la couche en EPSG:4326 (WGS84).');
     var feats = gj.type === 'FeatureCollection' ? gj.features : (gj.type === 'Feature' ? [gj] : []);
@@ -50,6 +70,12 @@
       else if (g.type === 'Polygon') out.lines.push(lineFrom(g.coordinates[0], p, out.lines.length));
       else if (g.type === 'MultiPolygon') g.coordinates.forEach(function (pg) { out.lines.push(lineFrom(pg[0], p, out.lines.length)); });
     });
+    if (!out.fields) {
+      var pts = feats.filter(function (f) { return f.geometry && /Point/.test(f.geometry.type); }), keys = {};
+      pts.forEach(function (f) { Object.keys(f.properties || {}).forEach(function (k) { if (keys[k] !== false) keys[k] = (f.properties[k] == null || String(f.properties[k]).trim() === ''); }); });
+      var empty = Object.keys(keys).filter(function (k) { return keys[k] && STATUT_KEYS.concat(NAME_KEYS, COMMENT_KEYS, SYM_KEYS, COLOR_KEYS, ID_KEYS).indexOf(k) < 0; });
+      if (pts.length && empty.length) out.fields = empty.map(function (k) { return { key: k, label: k.replace(/_/g, ' '), type: 'texte', choices: [] }; });
+    }
     return out;
   }
   function txt(el, tag) { var e = el.getElementsByTagName(tag)[0]; return e ? e.textContent.trim() : null; }
@@ -109,5 +135,5 @@
     r.name = r.name || file.name.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
     return r;
   }
-  window.NVImport = { parseFile: parseFile, fromGeoJSON: fromGeoJSON, fromKML: fromKML, fromGPX: fromGPX };
+  window.NVImport = { normStatut: normStatut, slugKey: slugKey, parseFile: parseFile, fromGeoJSON: fromGeoJSON, fromKML: fromKML, fromGPX: fromGPX };
 })();
