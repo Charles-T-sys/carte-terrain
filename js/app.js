@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.2.0';
+  var APP_VERSION = '5.3.0';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -1123,7 +1123,7 @@
   async function renderSettings() {
     var est = await NavDB.storageEstimate(), mig = await NavDB.getMeta('migrationV3'), persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) {}
-    var html = '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['sombre', 'Sombre'], ['soleil', 'Plein soleil'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var html = '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['soleil', 'Clair'], ['sombre', 'Sombre'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
     html += '<div class="section-h"><h2>Format des coordonnées</h2></div><div class="chips" style="flex-wrap:wrap">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (S.coordFmt === x[0] ? ' on' : '') + '" data-act="setFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<p class="muted" style="font-size:14px;line-height:1.4;margin:4px 2px">Exemple : ' + esc(fmtLL(48.20714, -68.51233)) + '. Sur la carte, touchez la ligne des coordonnées pour changer de format.</p>';
     html += '<div class="section-h"><h2>Envoi au bureau</h2></div><div class="list">' +
@@ -1145,7 +1145,7 @@
   }
   function applyTheme(t) {
     S.theme = t; document.body.setAttribute('data-theme', t);
-    var meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'soleil' ? '#FFFFFF' : (t === 'nuit' ? '#0C0202' : '#0F1712'));
+    var meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'soleil' ? '#F5F3EE' : (t === 'nuit' ? '#0E0605' : '#161D1A'));
     $('#m-theme').innerHTML = ic(t === 'soleil' ? 'sun' : 'moon');
   }
 
@@ -1195,7 +1195,7 @@
       opts.push({ label: 'Toutes mes cartes', sub: 'Aperçu des contours', icon: 'overview', fn: function () { showTab('apercu'); } });
       sheetOptions('Cartes ' + (ref === S.pos ? 'sous ma position' : 'au centre de l\'écran'), list.length ? null : 'Aucune carte ne couvre cet endroit.', opts);
     },
-    cycleTheme: function () { var n = { sombre: 'nuit', nuit: 'soleil', soleil: 'sombre' }[S.theme] || 'sombre'; applyTheme(n); NavDB.setMeta('theme', n); toast({ sombre: 'Thème sombre', nuit: 'Mode nuit', soleil: 'Mode plein soleil' }[n]); },
+    cycleTheme: function () { var n = { soleil: 'sombre', sombre: 'nuit', nuit: 'soleil' }[S.theme] || 'soleil'; applyTheme(n); NavDB.setMeta('theme', n); toast({ sombre: 'Thème sombre', nuit: 'Mode nuit', soleil: 'Thème clair' }[n]); },
     zoomIn: function () { S.map.zoomIn(1); }, zoomOut: function () { S.map.zoomOut(1); },
     follow: function () { setFollow(!S.follow); },
     compass: toggleCompass,
@@ -1325,7 +1325,7 @@
     var summary = null;
     try { bootMsg('Mise à jour de vos données…'); summary = await NavDB.migrate(); }
     catch (e) { bootMsg(e.message, true, true); return; }
-    applyTheme((await NavDB.getMeta('theme')) || 'sombre');
+    applyTheme((await NavDB.getMeta('theme')) || 'soleil');
     await loadAll();
     S.deviceId = await NavDB.getMeta('deviceId'); if (!S.deviceId) { S.deviceId = newUid(); await NavDB.setMeta('deviceId', S.deviceId); }
     S.activeLayerId = (await NavDB.getMeta('activeLayerId')) || null;

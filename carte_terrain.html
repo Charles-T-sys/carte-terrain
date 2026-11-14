@@ -7,19 +7,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Navenza">
-<meta name="theme-color" content="#0F1712">
+<meta name="theme-color" content="#F5F3EE">
 <title>NAVenza MAP</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet.min.css">
 <link rel="stylesheet" href="css/styles.css">
-<script>window.NV_HTML_VERSION = '5.2.0';
+<script>window.NV_HTML_VERSION = '5.3.0';
 // Filet de sécurité : si un fichier de l'app manque (mise à jour interrompue hors réseau), le dire clairement.
 setTimeout(function () {
   if (window.__NV) return;
   var m = document.getElementById('boot-msg');
-  if (m) m.innerHTML = '<span style="color:#FF9C8A">L\'application n\'a pas pu démarrer : des fichiers de la nouvelle version manquent sur cet appareil.</span><br><br>Ouvrez l\'app une fois avec du réseau, attendez « Prêt hors ligne », puis fermez-la et rouvrez-la.<br><br><button onclick="location.reload()" style="min-height:52px;padding:0 18px;border-radius:14px;border:none;background:#FFB547;color:#1A1206;font-size:17px;font-weight:700">Réessayer</button>';
+  if (m) m.innerHTML = '<span style="color:#FF9C8A">L\'application n\'a pas pu démarrer : des fichiers de la nouvelle version manquent sur cet appareil.</span><br><br>Ouvrez l\'app une fois avec du réseau, attendez « Prêt hors ligne », puis fermez-la et rouvrez-la.<br><br><button onclick="location.reload()" style="min-height:52px;padding:0 18px;border-radius:16px;border:none;background:#4F8461;color:#fff;font-size:17px;font-weight:700">Réessayer</button>';
 }, 9000);
 </script>
 <script src="lib/leaflet.min.js"></script>
@@ -33,7 +33,7 @@ setTimeout(function () {
 <script src="js/db.js"></script>
 <script src="js/export.js"></script>
 </head>
-<body data-theme="sombre">
+<body data-theme="soleil">
 
 <!-- Pictogrammes (traits, aucune émoji) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
