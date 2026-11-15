@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.5.0';
-  var NOUVEAUTES = ['Position moyennée : Point → « Position moyennée » fait la moyenne des lectures GPS pendant 30 à 120 s', 'Altitude et précision du GPS enregistrées avec chaque point et ajoutées aux exports', 'Rappel quand la dernière sauvegarde complète date de plus de 7 jours'];
+  var APP_VERSION = '5.6.0';
+  var NOUVEAUTES = ['Mesure : « Terminer » propose d\'enregistrer la mesure comme ligne ou polygone (exportés)', 'Suivre un tracé : écart à gauche ou à droite, distance restante (menu d\'un tracé)', 'Nouveau point « Par cap et distance »', 'Feuille Affichage plus basse, avec boutons − / + adaptés aux gants'];
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -24,6 +24,9 @@
   function covers(c, lat, lon) { return !!(c.footprint && inPoly(c.footprint, lat, lon)); }
   function bboxArea(c) { return c.bbox ? (c.bbox[2] - c.bbox[0]) * (c.bbox[3] - c.bbox[1]) : Infinity; }
   function cartesAt(lat, lon) { return S.cartes.filter(function (c) { return covers(c, lat, lon); }).sort(function (a, b) { return bboxArea(a) - bboxArea(b); }); }
+  function isPoly(t) { return t && t.geom === 'polygone'; }
+  function trLen(t) { var p = (t.points || []); return traceDist(isPoly(t) && p.length > 2 ? p.concat([p[0]]) : p); }
+  function trById(id) { return S.traces.find(function (x) { return x.id === id; }); }
   function areaHa(pts) { // aire d'un polygone (projection locale équirectangulaire)
     if (pts.length < 3) return 0; var lat0 = pts.reduce(function (s, p) { return s + p.lat; }, 0) / pts.length, k = 111320 * Math.cos(rad(lat0)), a = 0;
     for (var i = 0; i < pts.length; i++) { var p = pts[i], q = pts[(i + 1) % pts.length]; a += (p.lon * k) * (q.lat * 111320) - (q.lon * k) * (p.lat * 111320); }
@@ -102,12 +105,13 @@
 
   // ══════════════ Feuilles (bas d'écran) ══════════════
   function openSheet(html, fns) {
+    $('#sheet').classList.remove('compact'); $('#sheet-bg').classList.remove('clear');
     clearTimeout(toastTimer); $('#toast').classList.remove('show');
     S.sheetFns = fns || [];
     $('#sheet').innerHTML = '<div class="grip"></div>' + html;
     $('#sheet-bg').classList.add('open'); $('#sheet').classList.add('open');
   }
-  function closeSheet() { $('#sheet-bg').classList.remove('open'); $('#sheet').classList.remove('open'); S.sheetFns = []; if (S.avg) stopAvg(); }
+  function closeSheet() { $('#sheet-bg').classList.remove('open', 'clear'); $('#sheet').classList.remove('open', 'compact'); S.sheetFns = []; if (S.avg) stopAvg(); }
   // options : [{label, sub, icon, cls, fn, disabled}]
   function sheetOptions(title, text, options, noCancel) {
     var fns = [], html = '<h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') + '<div class="opts">';
@@ -370,28 +374,41 @@
     }
   }
   function pct(v) { return Math.round(v * 100) + ' %'; }
+  function stepper(k, id, v, off) {
+    var a = ' data-act="dispStep" data-k="' + k + '"' + (id ? ' data-id="' + esc(id) + '"' : ''), dis = off ? ' disabled' : '';
+    return '<span class="stepper"><button class="btn"' + a + ' data-d="-10" aria-label="Moins opaque"' + dis + '>−</button><b class="mono" id="disp-' + k + (id ? '-' + esc(id) : '') + '">' + pct(v) + '</b><button class="btn"' + a + ' data-d="10" aria-label="Plus opaque"' + dis + '>+</button></span>';
+  }
   function displaySheet() {
     var ordre = ordreEffectif(), fonds = ordre.slice().reverse().map(function (id) { return S.cartes.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
-    var nOrd = ordre.length;
-    var html = '<h3>Affichage</h3>';
+    var nOrd = ordre.length, sc = $('#sheet').scrollTop;
+    var html = '<div class="disp-top"><h3>Affichage</h3><button class="btn" data-act="pointLayersSheet">' + ic('layers') + '<span>Calques</span></button><button class="btn primary" data-act="closeSheet">Fermer</button></div>';
     if (S.carte && !isFond(S.carte)) {
-      html += '<div class="disp"><div class="disp-h"><b>' + esc(S.carte.name) + '</b><span class="mono muted" id="disp-carteOp">' + pct(S.carteOpacity) + '</span></div>' +
-        '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(S.carteOpacity * 100) + '" data-disp="carteOp" aria-label="Opacité de la carte">' +
-        '<label class="chk"><input type="checkbox" data-disp="carteBlend"' + (S.carteBlend ? ' checked' : '') + '><span>Rendre le blanc transparent<span class="s">Le papier de la carte disparaît, le fond apparaît dessous</span></span></label></div>';
+      html += '<div class="disp"><div class="disp-r"><b class="nm">' + esc(S.carte.name) + '</b>' + stepper('carteOp', null, S.carteOpacity) + '</div>' +
+        '<div class="disp-r"><button class="chip tog' + (S.carteBlend ? ' on' : '') + '" data-act="dispTog" data-k="carteBlend" aria-pressed="' + !!S.carteBlend + '">Blanc transparent</button><span class="muted s">Carte ouverte, toujours au-dessus des fonds</span></div></div>';
     }
-    html += '<div class="section-h" style="margin:14px 2px 6px"><h2 style="font-size:17px">Fonds</h2></div><p class="muted" style="margin:0 2px 8px;font-size:13px">Ordre des couches : la première en haut est dessus. ▲ ▼ pour changer.</p>';
-    if (!fonds.length) html += '<p class="muted" style="margin:0 2px 12px">Aucune mosaïque. Importez un fichier .pmtiles (orthophoto, relief) dans la bibliothèque.</p>';
+    if (!fonds.length) html += '<p class="muted" style="margin:4px 2px 10px">Aucune mosaïque. Importez un fichier .pmtiles (orthophoto, relief) dans la bibliothèque.</p>';
+    else html += '<p class="muted" style="margin:6px 2px 6px;font-size:13px">Fonds, du dessus vers le dessous. ▲ ▼ change l\'ordre.</p>';
     fonds.forEach(function (c) {
-      var st = S.fonds[c.id] || { on: false, op: 1, blend: false }, ouvert = S.carte && S.carte.id === c.id, on = st.on || ouvert;
-      var pos = ordre.indexOf(c.id);
-      html += '<div class="disp' + (on ? '' : ' off') + '"><div class="disp-h"><label class="chk" style="margin:0;flex:1"><input type="checkbox" data-disp="fondOn" data-id="' + esc(c.id) + '"' + (on ? ' checked' : '') + (ouvert ? ' disabled' : '') + '><span><b>' + esc(c.name) + '</b>' + (ouvert ? '<span class="s">Carte ouverte</span>' : '') + '</span></label>' +
-        '<span class="opts" style="margin:0"><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="1" aria-label="Monter"' + (pos >= nOrd - 1 ? ' disabled' : '') + '>▲</button><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="-1" aria-label="Descendre"' + (pos <= 0 ? ' disabled' : '') + '>▼</button></span></div>' +
-        (ouvert ? '' : '<div class="disp-h"><span class="muted">Opacité</span><span class="mono muted" id="disp-op-' + esc(c.id) + '">' + pct(st.op) + '</span></div>' +
-        '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(st.op * 100) + '" data-disp="fondOp" data-id="' + esc(c.id) + '"' + (st.on ? '' : ' disabled') + ' aria-label="Opacité de ' + esc(c.name) + '">' +
-        '<label class="chk"><input type="checkbox" data-disp="fondBlend" data-id="' + esc(c.id) + '"' + (st.blend ? ' checked' : '') + (st.on ? '' : ' disabled') + '><span>Ombrage<span class="s">Se fond avec la mosaïque dessous (pour un relief)</span></span></label>') + '</div>';
+      var st = S.fonds[c.id] || { on: false, op: 1, blend: false }, ouvert = S.carte && S.carte.id === c.id, on = st.on || ouvert, pos = ordre.indexOf(c.id);
+      html += '<div class="disp' + (on ? '' : ' off') + '"><div class="disp-r"><label class="chk nm"><input type="checkbox" data-disp="fondOn" data-id="' + esc(c.id) + '"' + (on ? ' checked' : '') + (ouvert ? ' disabled' : '') + '><span><b>' + esc(c.name) + '</b>' + (ouvert ? '<span class="s">Carte ouverte</span>' : '') + '</span></label>' +
+        '<span class="ord"><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="1" aria-label="Monter"' + (pos >= nOrd - 1 ? ' disabled' : '') + '>▲</button><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="-1" aria-label="Descendre"' + (pos <= 0 ? ' disabled' : '') + '>▼</button></span></div>' +
+        (ouvert ? '' : '<div class="disp-r">' + stepper('fondOp', c.id, st.op, !st.on) + '<button class="chip tog' + (st.blend ? ' on' : '') + '" data-act="dispTog" data-k="fondBlend" data-id="' + esc(c.id) + '" aria-pressed="' + !!st.blend + '"' + (st.on ? '' : ' disabled') + '>Ombrage</button></div>') + '</div>';
     });
-    html += '<div class="opts" style="margin-top:12px"><button class="btn" data-act="pointLayersSheet">' + ic('layers') + '<span>Calques de points et tracés</span></button><button class="btn primary" data-act="closeSheet">Fermer</button></div>';
     openSheet(html);
+    $('#sheet').classList.add('compact'); $('#sheet-bg').classList.add('clear'); $('#sheet').scrollTop = sc;
+  }
+  async function dispStep(el) {
+    var k = el.dataset.k, c = el.dataset.id, d = +el.dataset.d, step = function (v) { return Math.max(0, Math.min(1, Math.round(v * 10 + d / 10) / 10)); };
+    if (k === 'carteOp') { S.carteOpacity = step(S.carteOpacity); $('#disp-carteOp').textContent = pct(S.carteOpacity); applyCarteStyle(); saveCarteStyle(); return; }
+    var st = S.fonds[c]; if (!st) return;
+    st.op = step(st.op); var t = document.getElementById('disp-fondOp-' + c); if (t) t.textContent = pct(st.op);
+    if (S.fondLayers[c]) S.fondLayers[c].setOpacity(st.op); saveFonds();
+  }
+  async function dispTog(el) {
+    var k = el.dataset.k, c = el.dataset.id, v;
+    if (k === 'carteBlend') { v = S.carteBlend = !S.carteBlend; applyCarteStyle(); saveCarteStyle(); }
+    else { var st = S.fonds[c]; if (!st) return; v = st.blend = !st.blend; await saveFonds(); applyFonds(); }
+    el.classList.toggle('on', v); el.setAttribute('aria-pressed', String(v));
   }
   async function onDisp(el, final) {
     var k = el.dataset.disp, c = el.dataset.id, st = c ? (S.fonds[c] = S.fonds[c] || { on: false, op: 1, blend: false }) : null;
@@ -419,8 +436,10 @@
     S.wpGroup.clearLayers(); S.trGroup.clearLayers();
     S.traces.forEach(function (t) {
       if (!layerVisible(t.layerId) || !t.points || t.points.length < 2) return;
-      L.polyline(t.points.map(function (p) { return [p.lat, p.lon]; }), { color: t.color || '#ff3d00', weight: t.weight || 4, opacity: .9 })
-        .on('click', function () { traceMenu(t); }).addTo(S.trGroup);
+      var lls = t.points.map(function (p) { return [p.lat, p.lon]; }), suivi = S.follow && S.follow.id === t.id;
+      if (suivi) L.polyline(isPoly(t) ? lls.concat([lls[0]]) : lls, { color: '#fff', weight: 11, opacity: .85, interactive: false }).addTo(S.trGroup);
+      (isPoly(t) && lls.length > 2 ? L.polygon(lls, { color: t.color || '#ff3d00', weight: t.weight || 3, opacity: .95, fillOpacity: .12 }) : L.polyline(lls, { color: t.color || '#ff3d00', weight: suivi ? 6 : (t.weight || 4), opacity: .9 }))
+        .on('click', function () { if (S.mire) return; traceMenu(t); }).addTo(S.trGroup);
     });
     S.wps.forEach(function (w) {
       if (!layerVisible(w.layerId)) return;
@@ -528,12 +547,13 @@
 
   // ── Navigation vers un point ──
   function startNav(id) {
-    S.navTarget = id; renderOverlays(); updateNav(); keepAwake();
+    S.follow = null; S.navTarget = id; renderOverlays(); updateNav(); keepAwake();
     var w = wpById(id); if (w) toast('Navigation vers « ' + w.name + ' »');
   }
-  function stopNav() { S.navTarget = null; $('#nav-banner').classList.add('hidden'); renderOverlays(); keepAwake(); }
+  function stopNav() { S.navTarget = null; S.follow = null; $('#nav-banner').classList.add('hidden'); renderOverlays(); keepAwake(); }
   function updateNav() {
     var b = $('#nav-banner');
+    if (S.follow) { updateFollow(); return; }
     if (!S.navTarget) { b.classList.add('hidden'); return; }
     var w = wpById(S.navTarget); if (!w) { stopNav(); return; }
     b.classList.remove('hidden');
@@ -549,9 +569,53 @@
     if (d > 25) S._arrived = false;
   }
 
+  // ── Suivre un tracé : écart latéral ──
+  var FOL_OFF = 20, FOL_BACK = 12, FOL_AHEAD = 25;
+  function followPts(t, rev) { var p = (t.points || []).map(function (q) { return { lat: q.lat, lon: q.lon }; }); if (isPoly(t) && p.length > 2) p.push(p[0]); return rev ? p.reverse() : p; }
+  function startFollow(id, rev) {
+    var t = trById(id); if (!t || (t.points || []).length < 2) return;
+    S.navTarget = null; var pts = followPts(t, rev), cum = [0];
+    for (var i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav(pts[i - 1], pts[i]));
+    S.follow = { id: id, rev: !!rev, pts: pts, cum: cum, off: false, arrived: false };
+    if (!S.map || !$('#view-map').classList.contains('active')) showOnMap(pts[0].lat, pts[0].lon);
+    renderOverlays(); updateNav(); keepAwake(); toast('Suivi de « ' + (t.name || 'Tracé') + ' »' + (rev ? ' (sens inverse)' : ''));
+  }
+  // Position projetée sur le tracé le plus proche ; écart signé (+ = le tracé est à droite)
+  function followState(f, P) {
+    var pts = f.pts, kx = 111320 * Math.cos(rad(P.lat)), ky = 110574, best = null;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var ax = (pts[i].lon - P.lon) * kx, ay = (pts[i].lat - P.lat) * ky, dx = (pts[i + 1].lon - pts[i].lon) * kx, dy = (pts[i + 1].lat - pts[i].lat) * ky, l2 = dx * dx + dy * dy;
+      var u = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0, px = ax + u * dx, py = ay + u * dy, d = Math.sqrt(px * px + py * py);
+      if (!best || d < best.d) best = { i: i, u: u, d: d, side: dx * (-ay) - dy * (-ax) };
+    }
+    var segLen = f.cum[best.i + 1] - f.cum[best.i], along = f.cum[best.i] + best.u * segLen, total = f.cum[f.cum.length - 1];
+    var tgt = pointAlong(f, Math.min(total, along + FOL_AHEAD));
+    return { d: best.d, right: best.side > 0, along: along, rem: Math.max(0, total - along), segBr: bearing(pts[best.i], pts[best.i + 1]), tgt: tgt };
+  }
+  function pointAlong(f, s) {
+    var c = f.cum, p = f.pts, i = 0; while (i < c.length - 2 && c[i + 1] < s) i++;
+    var L2 = c[i + 1] - c[i], u = L2 > 0 ? (s - c[i]) / L2 : 0;
+    return { lat: p[i].lat + u * (p[i + 1].lat - p[i].lat), lon: p[i].lon + u * (p[i + 1].lon - p[i].lon) };
+  }
+  function updateFollow() {
+    var f = S.follow, t = trById(f.id); if (!t) { stopNav(); return; }
+    $('#nav-banner').classList.remove('hidden');
+    $('#nav-name').textContent = 'Suivre · ' + (t.name || 'Tracé') + (f.rev ? ' (inverse)' : '');
+    if (!S.pos) { $('#nav-dist').textContent = '—'; $('#nav-sub').textContent = 'en attente du GPS'; return; }
+    var st = followState(f, S.pos);
+    $('#nav-dist').textContent = st.d < 3 ? fmtDist(st.d) : (st.right ? fmtDist(st.d) + ' ▶' : '◀ ' + fmtDist(st.d));
+    $('#nav-sub').textContent = (st.d < 3 ? 'Sur le tracé' : 'Tracé à ' + (st.right ? 'droite' : 'gauche')) + ' · reste ' + fmtDist(st.rem) + ' · cap ' + deg(st.segBr);
+    var br = bearing(S.pos, st.tgt), ref = S.compassOn && S.heading != null ? S.heading : (S.speed > 1 && S.course != null ? S.course : 0);
+    $('#nav-arrow').style.transform = 'rotate(' + ((br - ref + 360) % 360) + 'deg)';
+    if (st.d > FOL_OFF && !f.off) { f.off = true; toast('Hors du tracé : ' + fmtDist(st.d) + ' à ' + (st.right ? 'droite' : 'gauche'), 4000); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
+    if (st.d < FOL_BACK && f.off) { f.off = false; toast('De retour sur le tracé'); }
+    if (st.rem < 10 && st.d < FOL_OFF && !f.arrived) { f.arrived = true; toast('Fin du tracé', 4000); if (navigator.vibrate) navigator.vibrate(300); }
+    if (st.rem > 25) f.arrived = false;
+  }
+
   // ── Écran allumé pendant un tracé ou une navigation ──
   async function keepAwake() {
-    var want = S.tracing || !!S.navTarget || !!S.avg;
+    var want = S.tracing || !!S.navTarget || !!S.follow || !!S.avg;
     try {
       if (want && !S.wakeLock && navigator.wakeLock) { S.wakeLock = await navigator.wakeLock.request('screen'); S.wakeLock.addEventListener('release', function () { S.wakeLock = null; }); }
       if (!want && S.wakeLock) { await S.wakeLock.release(); S.wakeLock = null; }
@@ -603,7 +667,7 @@
     var b = $('#mire-btns');
     if (mode === 'wp') b.innerHTML = '<button class="btn" data-act="exitMire">Annuler</button><button class="btn primary" data-act="mireWp">' + ic('pin') + 'Placer ici</button>';
     if (mode === 'move') b.innerHTML = '<button class="btn" data-act="exitMire">Annuler</button><button class="btn primary" data-act="mireMove">' + ic('move') + 'Déplacer ici</button>';
-    if (mode === 'measure') { S.measurePts = []; b.innerHTML = '<button class="btn" data-act="measureUndo" aria-label="Retirer le dernier point">' + ic('undo') + '</button><button class="btn primary" data-act="measureAdd">' + ic('plus') + 'Point</button><button class="btn" data-act="exitMire">Terminer</button>'; $('#m-measure').classList.add('on'); }
+    if (mode === 'measure') { S.measurePts = []; b.innerHTML = '<button class="btn" data-act="measureUndo" aria-label="Retirer le dernier point">' + ic('undo') + '</button><button class="btn primary" data-act="measureAdd">' + ic('plus') + 'Point</button><button class="btn" data-act="measureEnd">Terminer</button>'; $('#m-measure').classList.add('on'); }
     updateMire();
   }
   function exitMire() {
@@ -648,6 +712,27 @@
     for (var i = 0; i < n; i++) { var l = S.measureLayers.pop(); if (l) S.map.removeLayer(l); }
     if (S.elastic) { S.map.removeLayer(S.elastic); S.elastic = null; }
     updateMire();
+  }
+
+  function measureEnd() {
+    var pts = S.measurePts.slice();
+    if (pts.length < 2) { exitMire(); return; }
+    var len = traceDist(pts), per = traceDist(pts.concat([pts[0]])), ha = areaHa(pts);
+    sheetOptions('Enregistrer la mesure ?', pl(pts.length, 'point') + ' · ' + fmtDist(len) + (pts.length > 2 ? ' · ' + num(ha, 2) + ' ha' : ''), [
+      { label: 'Enregistrer comme ligne', sub: 'Longueur ' + fmtDist(len), icon: 'route', cls: 'primary', fn: function () { saveMeasure(pts, 'ligne'); } },
+      { label: 'Enregistrer comme polygone', sub: pts.length > 2 ? num(ha, 2) + ' ha · périmètre ' + fmtDist(per) : 'Il faut au moins 3 points', icon: 'ruler', disabled: pts.length < 3, fn: function () { saveMeasure(pts, 'polygone'); } },
+      { label: 'Quitter sans enregistrer', icon: 'trash', fn: exitMire },
+      { label: 'Continuer la mesure', icon: 'plus', fn: function () {} }
+    ], true);
+  }
+  async function saveMeasure(pts, geom) {
+    var lid = await ensureActiveLayer(), n = S.traces.filter(function (t) { return t.geom === geom; }).length + 1;
+    var name = await askText(geom === 'polygone' ? 'Nom du polygone' : 'Nom de la ligne', (geom === 'polygone' ? 'Polygone ' : 'Ligne ') + n);
+    if (name === null) return; // annulé : la mesure reste à l'écran
+    var t = stamp({ id: Date.now(), layerId: lid, name: name || ((geom === 'polygone' ? 'Polygone ' : 'Ligne ') + n), geom: geom, origine: 'mesure',
+      points: pts.map(function (p) { return { lat: p.lat, lon: p.lon }; }), timestamp: new Date().toISOString(), color: (layerById(lid) || {}).color || '#ff3d00', weight: 3 }, true);
+    await NavDB.saveTrace(t); S.traces.push(t); exitMire(); renderOverlays();
+    toast('« ' + t.name + ' » enregistré — ' + (geom === 'polygone' ? num(areaHa(t.points), 2) + ' ha' : fmtDist(traceDist(t.points))));
   }
 
   // ══════════════ Fiche d'un point ══════════════
@@ -765,15 +850,62 @@
       (run.rejected ? '<p class="muted" style="font-size:13px;margin:4px 2px">' + pl(run.rejected, 'lecture écartée', 'lectures écartées') + ' (précision au-delà de ' + AVG_MAX_ACC + ' m)</p>' : '');
     var b = $('#avg-use'); if (b) b.disabled = !r;
   }
-  var SRC_LABEL = { gps: 'GPS', moyenne: 'Position moyennée', viseur: 'Viseur', mire: 'Mire', coordonnees: 'Coordonnées saisies', deplace: 'Déplacé à la mire' };
+  var SRC_LABEL = { gps: 'GPS', moyenne: 'Position moyennée', viseur: 'Viseur', mire: 'Mire', coordonnees: 'Coordonnées saisies', deplace: 'Déplacé à la mire', projection: 'Par cap et distance' };
   function gpsLines(g) {
     if (!g || !g.src) return [];
     var out = [];
     if (g.src === 'moyenne') out.push(['Précision', 'Moyenne de ' + pl(g.n, 'lecture') + ' sur ' + g.dur + ' s · dispersion ' + num(g.spread, g.spread < 10 ? 1 : 0) + ' m · ±' + Math.round(g.acc) + ' m déclarés']);
     else if (g.src === 'gps') out.push(['Précision', g.acc != null ? '±' + Math.round(g.acc) + ' m (GPS, lecture unique)' : 'GPS']);
+    else if (g.src === 'projection') out.push(['Source', 'Projeté à ' + fmtDist(g.dist) + ', cap ' + num(g.cap, 1) + '° ' + (g.ref === 'magnetique' ? 'magnétique (déclinaison ' + num(g.decl, 1) + '°, cap vrai ' + num(g.capVrai, 1) + '°)' : 'vrai') + ' depuis ' + (g.fromSrc === 'gps' ? 'la position GPS' + (g.fromAcc != null ? ' (±' + Math.round(g.fromAcc) + ' m)' : '') : 'le centre de la carte')]);
     else out.push(['Source', SRC_LABEL[g.src] || g.src]);
     if (g.alt != null) out.push(['Altitude', Math.round(g.alt) + ' m' + (g.altAcc ? ' (±' + Math.round(g.altAcc) + ' m)' : '') + ' — GPS, indicative']);
     return out;
+  }
+
+  // ══════════════ Point par cap et distance ══════════════
+  function destPoint(p, brg, dist) {
+    var R = 6371008.8, d = dist / R, b = rad(brg), la1 = rad(p.lat), lo1 = rad(p.lon);
+    var la2 = Math.asin(Math.sin(la1) * Math.cos(d) + Math.cos(la1) * Math.sin(d) * Math.cos(b));
+    var lo2 = lo1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la1), Math.cos(d) - Math.sin(la1) * Math.sin(la2));
+    return { lat: la2 * 180 / Math.PI, lon: ((lo2 * 180 / Math.PI) + 540) % 360 - 180 };
+  }
+  function pnum(v) { if (v == null) return NaN; v = String(v).trim().replace(',', '.').replace('−', '-'); return v === '' ? NaN : +v; }
+  async function projSheet() {
+    var decl = await NavDB.getMeta('declinaison'), P = S.proj = { src: S.pos ? 'gps' : 'viseur', ref: decl != null ? 'magnetique' : 'vrai', decl: decl != null ? decl : '' };
+    var chips = function (k, list) { return '<div class="chips">' + list.map(function (o) { return '<button class="chip' + (P[k] === o[0] ? ' on' : '') + '" data-act="projOpt" data-k="' + k + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; };
+    openSheet('<h3>Point par cap et distance</h3><p>Pour un site vu de loin : nid de l\'autre côté du lac, barrage sur l\'autre rive.</p>' +
+      '<div class="field"><span>Depuis</span>' + chips('src', [['gps', 'Ma position GPS'], ['viseur', 'Centre de la carte']]) + '</div>' +
+      '<div class="proj-row"><label class="field"><span>Cap (°)</span><input class="input" id="proj-cap" inputmode="decimal" placeholder="ex. 245" autocomplete="off"></label>' +
+      '<label class="field"><span>Distance (m)</span><input class="input" id="proj-dist" inputmode="decimal" placeholder="ex. 150" autocomplete="off"></label></div>' +
+      '<div class="field"><span>Le cap est mesuré par rapport au nord</span>' + chips('ref', [['vrai', 'Vrai (carte)'], ['magnetique', 'Magnétique (boussole)']]) + '</div>' +
+      '<label class="field" id="proj-decl-f"' + (P.ref === 'magnetique' ? '' : ' style="display:none"') + '><span>Déclinaison magnétique (°, ouest = négatif)</span><input class="input" id="proj-decl" inputmode="decimal" placeholder="ex. −16" value="' + esc(String(P.decl)) + '" autocomplete="off"></label>' +
+      '<p class="mono" id="proj-out" style="font-size:15px;color:var(--text);margin:6px 2px 12px">—</p>' +
+      '<div class="opts"><button class="btn primary" data-act="projOk" id="proj-ok" disabled>' + ic('check') + '<span>Continuer</span></button><button class="btn" data-act="closeSheet">Annuler</button></div>');
+    ['proj-cap', 'proj-dist', 'proj-decl'].forEach(function (id) { $('#' + id).addEventListener('input', projUpdate); });
+    setTimeout(function () { var c = $('#proj-cap'); if (c) c.focus(); }, 300);
+    projUpdate();
+  }
+  function projCalc() {
+    var P = S.proj; if (!P) return null;
+    var o = P.src === 'gps' ? (S.pos ? { lat: S.pos.lat, lon: S.pos.lon } : null) : (S.map ? ll(S.map.getCenter()) : null);
+    var cap = pnum($('#proj-cap').value), dist = pnum($('#proj-dist').value), decl = pnum($('#proj-decl').value);
+    if (!o) return { err: P.src === 'gps' ? 'Position GPS en attente' : 'Carte non ouverte' };
+    if (!(cap >= 0 && cap <= 360)) return { err: 'Cap : un nombre de 0 à 360' };
+    if (!(dist > 0 && dist <= 20000)) return { err: 'Distance : un nombre de mètres, jusqu\'à 20 km' };
+    if (P.ref === 'magnetique' && !(decl >= -40 && decl <= 40)) return { err: 'Déclinaison : un nombre, ex. −16 (ouest = négatif)' };
+    var vrai = ((P.ref === 'magnetique' ? cap + decl : cap) % 360 + 360) % 360, d = destPoint(o, vrai, dist);
+    return { o: o, cap: cap, vrai: vrai, dist: dist, decl: P.ref === 'magnetique' ? decl : null, lat: d.lat, lon: d.lon };
+  }
+  function projUpdate() {
+    var r = projCalc(), out = $('#proj-out'), ok = $('#proj-ok'); if (!out) return;
+    out.textContent = !r ? '—' : r.err ? r.err : '→ ' + fmtLL(r.lat, r.lon) + (r.decl != null ? ' (cap vrai ' + deg(r.vrai) + ')' : '');
+    out.style.color = r && r.err ? 'var(--muted)' : 'var(--text)'; ok.disabled = !r || !!r.err;
+  }
+  async function projOk() {
+    var r = projCalc(); if (!r || r.err) return;
+    var P = S.proj; if (r.decl != null) await NavDB.setMeta('declinaison', r.decl);
+    closeSheet(); S.proj = null;
+    openWpForm(null, { lat: r.lat, lon: r.lon, gps: { src: 'projection', from: { lat: r.o.lat, lon: r.o.lon }, fromSrc: P.src, fromAcc: P.src === 'gps' ? S.acc : null, cap: r.cap, ref: P.ref, decl: r.decl, capVrai: r.vrai, dist: r.dist } });
   }
 
   // ══════════════ Formulaire d'un point ══════════════
@@ -938,9 +1070,9 @@
       var ts = S.traces.slice().sort(function (a, b) { return (b.timestamp || '').localeCompare(a.timestamp || ''); });
       box.innerHTML = ts.length ? '<div class="list">' + ts.map(function (t) {
         var l = layerById(t.layerId);
-        return '<div class="row"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 20c5-10 9 2 13-8s5-6 7-8" fill="none" stroke="' + esc(t.color || '#ff3d00') + '" stroke-width="4" stroke-linecap="round"/></svg><span class="main"><span class="t">' + esc(t.name || 'Tracé') + '</span><span class="s">' + fmtDist(traceDist(t.points || [])) + ' · ' + esc(fmtDay(t.timestamp)) + (l ? ' · ' + esc(l.name) : '') + (t.imported ? ' · importé' : (t.sentAt ? ' · envoyé' : '')) + '</span></span>' +
+        return '<div class="row"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">' + (isPoly(t) ? '<path d="M5 7 18 4l4 13-12 5z" fill="' + esc(t.color || '#ff3d00') + '" fill-opacity=".25" stroke="' + esc(t.color || '#ff3d00') + '" stroke-width="3" stroke-linejoin="round"/>' : '<path d="M3 20c5-10 9 2 13-8s5-6 7-8" fill="none" stroke="' + esc(t.color || '#ff3d00') + '" stroke-width="4" stroke-linecap="round"' + '/>') + '</svg><span class="main"><span class="t">' + esc(t.name || 'Tracé') + '</span><span class="s">' + (isPoly(t) ? num(areaHa(t.points || []), 2) + ' ha' : (t.origine === 'mesure' ? 'ligne · ' : '') + fmtDist(trLen(t))) + ' · ' + esc(fmtDay(t.timestamp)) + (l ? ' · ' + esc(l.name) : '') + (t.imported ? ' · importé' : (t.sentAt ? ' · envoyé' : '')) + '</span></span>' +
           '<button class="more" data-act="traceMenu" data-id="' + t.id + '" aria-label="Actions du tracé">' + ic('more') + '</button></div>';
-      }).join('') + '</div>' : '<div class="empty">Aucun tracé. Lancez-en un avec le bouton <b>Tracé</b> sur la carte.</div>';
+      }).join('') + '</div>' : '<div class="empty">Aucun tracé. Lancez-en un avec le bouton <b>Tracé</b> sur la carte, ou enregistrez une <b>Mesure</b>.</div>';
       return;
     }
     var q = S.ptsQuery.trim().toLowerCase();
@@ -955,11 +1087,14 @@
       '<div class="empty">' + (S.wps.length ? 'Aucun point ne correspond.' : 'Aucun point. Ajoutez-en un avec le bouton <b>Point</b> sur la carte.') + '</div>';
   }
   function traceMenu(t) {
-    sheetOptions(t.name || 'Tracé', fmtDist(traceDist(t.points || [])) + ' · ' + (t.points || []).length + ' points · ' + fmtDate(t.timestamp), [
+    var resume = isPoly(t) ? 'Polygone · ' + num(areaHa(t.points || []), 2) + ' ha · périmètre ' + fmtDist(trLen(t)) : (t.origine === 'mesure' ? 'Ligne mesurée · ' : '') + fmtDist(trLen(t));
+    sheetOptions(t.name || 'Tracé', resume + ' · ' + (t.points || []).length + ' points · ' + fmtDate(t.timestamp), [
+      { label: 'Suivre ' + (isPoly(t) ? 'ce contour' : 'ce tracé'), sub: 'Écart à gauche ou à droite, distance restante', icon: 'route', cls: 'primary', fn: function () { startFollow(t.id, false); } },
+      { label: 'Suivre en sens inverse', sub: 'Du dernier point vers le premier', icon: 'route', fn: function () { startFollow(t.id, true); } },
       { label: 'Voir sur la carte', icon: 'map', fn: function () { var p = t.points[Math.floor(t.points.length / 2)]; showOnMap(p.lat, p.lon); } },
       { label: 'Renommer', icon: 'edit', fn: async function () { var n = await askText('Renommer le tracé', t.name); if (!n) return; t.name = n; await NavDB.saveTrace(t); refreshAfterData(); } },
       { label: 'Changer de calque', icon: 'layers', fn: function () { pickLayer(t.layerId, async function (lid) { t.layerId = lid; await NavDB.saveTrace(t); refreshAfterData(); }); } },
-      { label: 'Supprimer', icon: 'trash', cls: 'danger', fn: async function () { if (!await confirmSheet('Supprimer ce tracé ?', '« ' + (t.name || 'Tracé') + ' » sera supprimé définitivement.', 'Supprimer', true)) return; await NavDB.deleteTrace(t.id); S.traces = S.traces.filter(function (x) { return x.id !== t.id; }); refreshAfterData(); toast('Tracé supprimé'); } }
+      { label: 'Supprimer', icon: 'trash', cls: 'danger', fn: async function () { if (!await confirmSheet('Supprimer ce tracé ?', '« ' + (t.name || 'Tracé') + ' » sera supprimé définitivement.', 'Supprimer', true)) return; await NavDB.deleteTrace(t.id); if (S.follow && S.follow.id === t.id) stopNav(); S.traces = S.traces.filter(function (x) { return x.id !== t.id; }); refreshAfterData(); toast('Tracé supprimé'); } }
     ]);
   }
   function pickLayer(current, cb) {
@@ -1326,6 +1461,7 @@
   // ══════════════ Actions (délégation d'événements) ══════════════
   var ACT = {
     fondMove: function (el) { fondMove(el); },
+    dispStep: dispStep, dispTog: dispTog,
     tab: function (el) { showTab(el.dataset.tab); },
     closeSheet: closeSheet,
     sheetOpt: function (el) { var fn = S.sheetFns[+el.dataset.i]; closeSheet(); if (fn) fn(); },
@@ -1389,6 +1525,7 @@
       if (S.viseur) { var vc = ll(S.map.getCenter()); opts.push({ label: 'Au viseur', sub: fmtLL(vc.lat, vc.lon), icon: 'move', cls: 'primary', fn: function () { openWpForm(null, { lat: vc.lat, lon: vc.lon, gps: { src: 'viseur' } }); } }); }
       opts.push({ label: 'À ma position GPS', sub: S.pos ? fmtLL(S.pos.lat, S.pos.lon) + ' · ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente', icon: 'locate', cls: S.viseur ? '' : 'primary', disabled: !S.pos, fn: function () { openWpForm(null, { lat: S.pos.lat, lon: S.pos.lon, gps: { src: 'gps', acc: S.acc, alt: S.alt, altAcc: S.altAcc } }); } });
       opts.push({ label: 'Position moyennée', sub: 'Rester immobile 30 à 120 s pour une position plus sûre', icon: 'locate', disabled: !S.pos, fn: startAvg });
+      opts.push({ label: 'Par cap et distance', sub: 'Un site vu de loin, depuis votre position ou le centre de la carte', icon: 'nav', fn: projSheet });
       if (!S.viseur) opts.push({ label: 'Avec la mire', sub: 'Viser un endroit au centre de l\'écran', icon: 'move', fn: function () { enterMire('wp'); } });
       opts.push({ label: 'Coller des coordonnées', sub: 'Reçues par texto ou courriel', icon: 'edit', fn: pasteSheet });
       opts.push({ label: 'Entrer des coordonnées', icon: 'edit', fn: function () { var c = ll(S.map.getCenter()); openWpForm(null, { lat: c.lat, lon: c.lon, manual: true }); } });
@@ -1413,6 +1550,8 @@
     measure: function () { if (S.mire === 'measure') exitMire(); else enterMire('measure'); },
     exitMire: exitMire, measureAdd: measureAdd, measureUndo: measureUndo,
     mireWp: function () { var c = ll(S.map.getCenter()); exitMire(); openWpForm(null, { lat: c.lat, lon: c.lon, gps: { src: 'mire' } }); },
+    projOpt: function (el) { var P = S.proj; if (!P) return; P[el.dataset.k] = el.dataset.v; document.querySelectorAll('[data-act=projOpt][data-k=' + el.dataset.k + ']').forEach(function (b) { b.classList.toggle('on', b.dataset.v === el.dataset.v); }); var f = $('#proj-decl-f'); if (f) f.style.display = P.ref === 'magnetique' ? '' : 'none'; projUpdate(); },
+    projOk: projOk, measureEnd: measureEnd,
     avgDur: function (el) { if (!S.avg) return; S.avgDur = +el.dataset.id; S.avg.dur = S.avgDur; if (S.avg.done && (Date.now() - S.avg.t0) / 1000 < S.avg.dur) { S.avg.done = false; S.avg.doneAt = null; } document.querySelectorAll('#avg-durs .chip').forEach(function (b) { b.classList.toggle('on', +b.dataset.id === S.avgDur); }); renderAvg(); },
     mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.gps = { src: 'deplace' }; w.sentAt = null; if (w.imported) w.modified = true; stamp(w); await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
     // Points

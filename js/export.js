@@ -8,18 +8,24 @@
   function layerName(byId, id) { return (byId[id] && byId[id].name) || ''; }
   function slug(s) { return String(s || 'export').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'export'; }
   function km(a, b) { var R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLon = (b.lon - a.lon) * Math.PI / 180, s = Math.sin(dLat / 2), c = Math.sin(dLon / 2); var h = s * s + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * c * c; return R * 2 * Math.asin(Math.sqrt(h)); }
-  function traceKm(t) { var d = 0; for (var i = 1; i < t.points.length; i++) d += km(t.points[i - 1], t.points[i]); return d; }
+  function traceKm(t) { var p = t.geom === 'polygone' ? t.points.concat([t.points[0]]) : t.points, d = 0; for (var i = 1; i < p.length; i++) d += km(p[i - 1], p[i]); return d; }
   function symId(w) { return window.NVSym ? NVSym.idOf(w) : (w.cat || 'point'); }
   function symLabel(w) { return window.NVSym ? NVSym.labelOf(w) : (w.cat || ''); }
   function symColor(w) { return window.NVSym ? (NVSym.BY[symId(w)] || NVSym.BY.point).color : '#ff6d00'; }
   function fileId(o) { return String(o.uid || o.id).replace(/[^a-zA-Z0-9_-]+/g, '_'); }
   function photoNames(w) { return (w.photoIds || []).map(function (_, j) { return fileId(w) + '_' + (j + 1) + '.jpg'; }); }
-  function validTraces(trs) { return trs.filter(function (t) { return t.points && t.points.length > 1; }); }
+  function validTraces(trs) { return trs.filter(function (t) { return t.points && t.points.length > (t.geom === 'polygone' ? 2 : 1); }); }
+  function isPoly(t) { return t.geom === 'polygone'; }
+  function ring(t) { var p = t.points.map(function (q) { return [q.lon, q.lat]; }); return p.concat([p[0]]); }
+  function areaHa(pts) { if (pts.length < 3) return 0; var lat0 = pts.reduce(function (s, p) { return s + p.lat; }, 0) / pts.length, k = 111320 * Math.cos(lat0 * Math.PI / 180), a = 0; for (var i = 0; i < pts.length; i++) { var p = pts[i], q = pts[(i + 1) % pts.length]; a += (p.lon * k) * (q.lat * 111320) - (q.lon * k) * (p.lat * 111320); } return Math.abs(a / 2) / 10000; }
+  function origine(t) { return t.origine === 'mesure' ? 'mesure' : (t.imported ? 'bureau' : 'trace GPS'); }
 
   // Source et qualité de la position (5.5)
   function gpsProps(w) {
     var g = w.gps || {}, r = function (v, d) { return v == null || !isFinite(v) ? null : +v.toFixed(d); };
-    return { pos_source: g.src || (w.imported ? 'bureau' : null), acc_m: r(g.acc, 1), alt_m: r(g.alt, 1), alt_acc_m: r(g.altAcc, 1), avg_n: g.n || null, avg_s: g.dur || null, avg_spread_m: r(g.spread, 2) };
+    var o = { pos_source: g.src || (w.imported ? 'bureau' : null), acc_m: r(g.acc, 1), alt_m: r(g.alt, 1), alt_acc_m: r(g.altAcc, 1), avg_n: g.n || null, avg_s: g.dur || null, avg_spread_m: r(g.spread, 2) };
+    if (g.src === 'projection') Object.assign(o, { proj_cap_deg: r(g.cap, 1), proj_nord: g.ref || 'vrai', proj_decl_deg: r(g.decl, 1), proj_cap_vrai_deg: r(g.capVrai, 1), proj_dist_m: r(g.dist, 1), proj_depuis: g.fromSrc === 'gps' ? 'position GPS' : 'centre de la carte', proj_from_lat: g.from ? +g.from.lat.toFixed(7) : null, proj_from_lon: g.from ? +g.from.lon.toFixed(7) : null, proj_from_acc_m: r(g.fromAcc, 1) });
+    return o;
   }
   // ── GeoJSON (points + tracés) ──
   function geojson(wps, trs, byId, label, extra) {
@@ -29,9 +35,9 @@
           photo_count: (w.photoIds || []).length, photos: photoNames(w).join(';'), timestamp: w.timestamp, color: w.color || symColor(w), source: w.imported ? (w.modified ? 'bureau, modifié' : 'bureau') : 'terrain', ext_id: w.extId || null,
           uid: w.uid || String(w.id), statut: w.statut || '', statut_date: w.statutAt || null, author: w.author || '', updated_at: w.updatedAt || w.timestamp, updated_by: w.updatedBy || '', device: w.device || '' }, gpsProps(w)) };
     }).concat(validTraces(trs).map(function (t) {
-      return { type: 'Feature', geometry: { type: 'LineString', coordinates: t.points.map(function (p) { return [p.lon, p.lat]; }) },
+      return { type: 'Feature', geometry: isPoly(t) ? { type: 'Polygon', coordinates: [ring(t)] } : { type: 'LineString', coordinates: t.points.map(function (p) { return [p.lon, p.lat]; }) },
         properties: { id: t.id, uid: t.uid || String(t.id), author: t.author || '', updated_at: t.updatedAt || t.timestamp, device: t.device || '', source: t.imported ? 'bureau' : 'terrain', name: t.name || 'Tracé', layer: layerName(byId, t.layerId), timestamp: t.timestamp, points: t.points.length,
-          dist_km: +traceKm(t).toFixed(3), color: t.color || '#ff3d00', times: t.points.map(function (p) { return p.t || null; }) } };
+          dist_km: +traceKm(t).toFixed(3), geom: isPoly(t) ? 'polygone' : 'ligne', origine: origine(t), area_ha: isPoly(t) ? +areaHa(t.points).toFixed(4) : null, color: t.color || '#ff3d00', times: t.origine === 'mesure' ? null : t.points.map(function (p) { return p.t || null; }) } };
     }));
     var gj = { type: 'FeatureCollection', name: label || 'navenza', features: f };
     if (extra) gj.navenza = extra;
@@ -46,8 +52,9 @@
         '<type>' + escapeXml(symLabel(p)) + '</type></wpt>';
     }).join('\n');
     var t = validTraces(trs).map(function (tr) {
-      var pts = tr.points.map(function (p) { return '    <trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.t ? '<time>' + p.t + '</time>' : '') + '</trkpt>'; }).join('\n');
-      return '  <trk><name>' + escapeXml(tr.name || 'Tracé') + '</name><type>' + escapeXml(layerName(byId, tr.layerId)) + '</type><trkseg>\n' + pts + '\n  </trkseg></trk>';
+      var pp = isPoly(tr) ? tr.points.concat([tr.points[0]]) : tr.points;
+      var pts = pp.map(function (p) { return '    <trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.t ? '<time>' + p.t + '</time>' : '') + '</trkpt>'; }).join('\n');
+      return '  <trk><name>' + escapeXml(tr.name || 'Tracé') + '</name>' + (isPoly(tr) ? '<desc>Polygone ' + areaHa(tr.points).toFixed(2) + ' ha (contour fermé)</desc>' : (tr.origine === 'mesure' ? '<desc>Ligne mesurée</desc>' : '')) + '<type>' + escapeXml(layerName(byId, tr.layerId)) + '</type><trkseg>\n' + pts + '\n  </trkseg></trk>';
     }).join('\n');
     var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="NAVenza MAP" xmlns="http://www.topografix.com/GPX/1/1">\n' + w + (w && t ? '\n' : '') + t + '\n</gpx>';
     return [{ blob: new Blob([s], { type: 'application/gpx+xml' }), name: 'navenza_' + slug(label) + '_' + today() + '.gpx' }];
@@ -66,7 +73,7 @@
     if (typeof JSZip === 'undefined') throw new Error('JSZip non chargé');
     var now = today(), allPhotos = [], folders = {};
     var styles = wps.map(function (w) { return '<Style id="wp_' + w.id + '"><IconStyle><color>' + hexToKml(w.color || symColor(w)) + '</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon></IconStyle></Style>'; }).join('') +
-      validTraces(trs).map(function (t) { return '<Style id="tr_' + t.id + '"><LineStyle><color>' + hexToKml(t.color) + '</color><width>' + ((t.weight || 4) * 0.5).toFixed(1) + '</width></LineStyle></Style>'; }).join('');
+      validTraces(trs).map(function (t) { return '<Style id="tr_' + t.id + '"><LineStyle><color>' + hexToKml(t.color) + '</color><width>' + ((t.weight || 4) * 0.5).toFixed(1) + '</width></LineStyle>' + (isPoly(t) ? '<PolyStyle><color>40' + hexToKml(t.color).slice(2) + '</color></PolyStyle>' : '') + '</Style>'; }).join('');
     function push(layerId, xml) { var k = layerName(byId, layerId) || 'Sans calque'; (folders[k] = folders[k] || []).push(xml); }
     for (var i = 0; i < wps.length; i++) {
       var w = wps[i], photos = await getPhotos(w), prs = [];
@@ -83,7 +90,8 @@
     }
     validTraces(trs).forEach(function (t) {
       push(t.layerId, '  <Placemark><name>' + escapeXml(t.name || 'Tracé') + '</name><TimeStamp><when>' + (t.timestamp || now) + '</when></TimeStamp><styleUrl>#tr_' + t.id +
-        '</styleUrl><LineString><tessellate>1</tessellate><coordinates>' + t.points.map(function (p) { return p.lon + ',' + p.lat + ',0'; }).join(' ') + '</coordinates></LineString></Placemark>');
+        '</styleUrl>' + (isPoly(t) ? '<description>' + escapeXml('Polygone ' + areaHa(t.points).toFixed(2) + ' ha · périmètre ' + traceKm(t).toFixed(3) + ' km') + '</description><Polygon><tessellate>1</tessellate><outerBoundaryIs><LinearRing><coordinates>' + ring(t).map(function (c) { return c[0] + ',' + c[1] + ',0'; }).join(' ') + '</coordinates></LinearRing></outerBoundaryIs></Polygon>'
+          : '<LineString><tessellate>1</tessellate><coordinates>' + t.points.map(function (p) { return p.lon + ',' + p.lat + ',0'; }).join(' ') + '</coordinates></LineString>') + '</Placemark>');
     });
     var body = Object.keys(folders).map(function (k) { return ' <Folder><name>' + escapeXml(k) + '</name>\n' + folders[k].join('\n') + '\n </Folder>'; }).join('\n');
     var kml = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>' + escapeXml('NAVenza MAP — ' + (label || '') + ' — ' + now) + '</name>\n' + styles + '\n' + body + '\n</Document></kml>';
@@ -115,18 +123,19 @@
     });
     return { shp: new Uint8Array(shp.buffer), shx: new Uint8Array(shx.buffer) };
   }
-  function shpLines(trs) {
+  function shpLines(trs, type) {
+    type = type || 3;
     var rb = 0; trs.forEach(function (t) { rb += 8 + 44 + 4 + 16 * t.points.length; });
     var fb = 100 + rb, shp = new DataView(new ArrayBuffer(fb)), xb = 100 + trs.length * 8, shx = new DataView(new ArrayBuffer(xb));
     var bb = [Infinity, Infinity, -Infinity, -Infinity];
     trs.forEach(function (t) { t.points.forEach(function (p) { bb[0] = Math.min(bb[0], p.lon); bb[1] = Math.min(bb[1], p.lat); bb[2] = Math.max(bb[2], p.lon); bb[3] = Math.max(bb[3], p.lat); }); });
-    [[shp, fb], [shx, xb]].forEach(function (a) { var v = a[0]; v.setInt32(0, 9994, false); v.setInt32(24, a[1] / 2, false); v.setInt32(28, 1000, true); v.setInt32(32, 3, true); bb.forEach(function (x, k) { v.setFloat64(36 + k * 8, x, true); }); });
+    [[shp, fb], [shx, xb]].forEach(function (a) { var v = a[0]; v.setInt32(0, 9994, false); v.setInt32(24, a[1] / 2, false); v.setInt32(28, 1000, true); v.setInt32(32, type, true); bb.forEach(function (x, k) { v.setFloat64(36 + k * 8, x, true); }); });
     var o = 100, xo = 100;
     trs.forEach(function (t, i) {
       var n = t.points.length, cb = 44 + 4 + 16 * n, tb = [Infinity, Infinity, -Infinity, -Infinity];
       t.points.forEach(function (p) { tb[0] = Math.min(tb[0], p.lon); tb[1] = Math.min(tb[1], p.lat); tb[2] = Math.max(tb[2], p.lon); tb[3] = Math.max(tb[3], p.lat); });
       shx.setInt32(xo, o / 2, false); shx.setInt32(xo + 4, cb / 2, false);
-      shp.setInt32(o, i + 1, false); shp.setInt32(o + 4, cb / 2, false); shp.setInt32(o + 8, 3, true);
+      shp.setInt32(o, i + 1, false); shp.setInt32(o + 4, cb / 2, false); shp.setInt32(o + 8, type, true);
       tb.forEach(function (x, k) { shp.setFloat64(o + 12 + k * 8, x, true); });
       shp.setInt32(o + 44, 1, true); shp.setInt32(o + 48, n, true); shp.setInt32(o + 52, 0, true);
       var po = o + 56; t.points.forEach(function (p) { shp.setFloat64(po, p.lon, true); shp.setFloat64(po + 8, p.lat, true); po += 16; });
@@ -166,17 +175,26 @@
       var fields = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'SYMBOL', type: 'C', len: 20 }, { name: 'SYMB_LABEL', type: 'C', len: 60 }, { name: 'COMMENT', type: 'C', len: 254 },
         { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'SOURCE', type: 'C', len: 20 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'PHOTOS', type: 'N', len: 3 }, { name: 'UID', type: 'C', len: 60 }, { name: 'STATUT', type: 'C', len: 12 }, { name: 'AUTHOR', type: 'C', len: 40 }, { name: 'UPDATED', type: 'C', len: 24 },
         { name: 'LAT', type: 'N', len: 12, dec: 7 }, { name: 'LON', type: 'N', len: 13, dec: 7 },
-        { name: 'POS_SRC', type: 'C', len: 12 }, { name: 'ACC_M', type: 'N', len: 8, dec: 1 }, { name: 'ALT_M', type: 'N', len: 8, dec: 1 }, { name: 'AVG_N', type: 'N', len: 5 }, { name: 'AVG_S', type: 'N', len: 5 }, { name: 'AVG_SPR_M', type: 'N', len: 8, dec: 2 }];
+        { name: 'POS_SRC', type: 'C', len: 12 }, { name: 'PROJ_CAP', type: 'N', len: 6, dec: 1 }, { name: 'PROJ_DIST', type: 'N', len: 8, dec: 1 }, { name: 'ACC_M', type: 'N', len: 8, dec: 1 }, { name: 'ALT_M', type: 'N', len: 8, dec: 1 }, { name: 'AVG_N', type: 'N', len: 5 }, { name: 'AVG_S', type: 'N', len: 5 }, { name: 'AVG_SPR_M', type: 'N', len: 8, dec: 2 }];
       f.file('points.shp', p.shp); f.file('points.shx', p.shx); f.file('points.prj', prj); f.file('points.cpg', 'UTF-8');
       f.file('points.dbf', dbf(wps.map(function (w) { return Object.assign({ NAME: w.name || '', LAYER: layerName(byId, w.layerId), SYMBOL: symId(w), SYMB_LABEL: symLabel(w), COMMENT: w.comment || '', TIMESTAMP: (w.timestamp || '').slice(0, 24),
-        SOURCE: w.imported ? (w.modified ? 'bureau-modifie' : 'bureau') : 'terrain', COLOR: w.color || symColor(w), PHOTOS: (w.photoIds || []).length, UID: w.uid || String(w.id), STATUT: w.statut || '', AUTHOR: w.author || '', UPDATED: (w.updatedAt || w.timestamp || '').slice(0, 24), LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }, (function (g) { var f = function (v, d) { return v == null ? '' : v.toFixed(d); }; return { POS_SRC: g.pos_source || '', ACC_M: f(g.acc_m, 1), ALT_M: f(g.alt_m, 1), AVG_N: g.avg_n || '', AVG_S: g.avg_s || '', AVG_SPR_M: f(g.avg_spread_m, 2) }; })(gpsProps(w))); }), fields));
+        SOURCE: w.imported ? (w.modified ? 'bureau-modifie' : 'bureau') : 'terrain', COLOR: w.color || symColor(w), PHOTOS: (w.photoIds || []).length, UID: w.uid || String(w.id), STATUT: w.statut || '', AUTHOR: w.author || '', UPDATED: (w.updatedAt || w.timestamp || '').slice(0, 24), LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }, (function (g) { var f = function (v, d) { return v == null ? '' : v.toFixed(d); }; return { POS_SRC: g.pos_source || '', PROJ_CAP: f(g.proj_cap_vrai_deg, 1), PROJ_DIST: f(g.proj_dist_m, 1), ACC_M: f(g.acc_m, 1), ALT_M: f(g.alt_m, 1), AVG_N: g.avg_n || '', AVG_S: g.avg_s || '', AVG_SPR_M: f(g.avg_spread_m, 2) }; })(gpsProps(w))); }), fields));
+    }
+    var vp = vt.filter(isPoly); vt = vt.filter(function (t) { return !isPoly(t); });
+    if (vp.length) {
+      // anneau fermé, sens horaire (exigé pour un anneau extérieur de shapefile)
+      var rings = vp.map(function (t) { var p = t.points.concat([t.points[0]]), a2 = 0; for (var i = 1; i < p.length; i++) a2 += (p[i].lon - p[i - 1].lon) * (p[i].lat + p[i - 1].lat); return { points: a2 > 0 ? p : p.slice().reverse() }; });
+      var pg = shpLines(rings, 5), gp = zip.folder('polygones');
+      var pfd = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'AREA_HA', type: 'N', len: 12, dec: 4 }, { name: 'PERIM_KM', type: 'N', len: 10, dec: 3 }, { name: 'ORIGINE', type: 'C', len: 12 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'UID', type: 'C', len: 60 }];
+      gp.file('polygones.shp', pg.shp); gp.file('polygones.shx', pg.shx); gp.file('polygones.prj', prj); gp.file('polygones.cpg', 'UTF-8');
+      gp.file('polygones.dbf', dbf(vp.map(function (t) { return { NAME: t.name || 'Polygone', LAYER: layerName(byId, t.layerId), TIMESTAMP: (t.timestamp || '').slice(0, 24), AREA_HA: areaHa(t.points).toFixed(4), PERIM_KM: traceKm(t).toFixed(3), ORIGINE: origine(t), COLOR: t.color || '#ff3d00', UID: t.uid || String(t.id) }; }), pfd));
     }
     if (vt.length) {
       var l = shpLines(vt), g = zip.folder('traces');
       var tf = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'PTS', type: 'N', len: 6 },
-        { name: 'DIST_KM', type: 'N', len: 10, dec: 3 }, { name: 'COLOR', type: 'C', len: 10 }];
+        { name: 'DIST_KM', type: 'N', len: 10, dec: 3 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'ORIGINE', type: 'C', len: 12 }, { name: 'UID', type: 'C', len: 60 }];
       g.file('traces.shp', l.shp); g.file('traces.shx', l.shx); g.file('traces.prj', prj); g.file('traces.cpg', 'UTF-8');
-      g.file('traces.dbf', dbf(vt.map(function (t) { return { NAME: t.name || 'Tracé', LAYER: layerName(byId, t.layerId), TIMESTAMP: (t.timestamp || '').slice(0, 24), PTS: t.points.length, DIST_KM: traceKm(t).toFixed(3), COLOR: t.color || '#ff3d00' }; }), tf));
+      g.file('traces.dbf', dbf(vt.map(function (t) { return { NAME: t.name || 'Tracé', LAYER: layerName(byId, t.layerId), TIMESTAMP: (t.timestamp || '').slice(0, 24), PTS: t.points.length, DIST_KM: traceKm(t).toFixed(3), COLOR: t.color || '#ff3d00', ORIGINE: origine(t), UID: t.uid || String(t.id) }; }), tf));
     }
     return [{ blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' }), name: 'navenza_shp_' + slug(label) + '_' + today() + '.zip' }];
   }
