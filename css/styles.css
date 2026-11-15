@@ -182,6 +182,25 @@ body[data-theme="sombre"] #map, body[data-theme="nuit"] #map { background: #1d26
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .photo .del { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; border-radius: 18px; border: none; background: rgba(0,0,0,.65); color: #fff; display: flex; align-items: center; justify-content: center; }
 .photo-add { height: 104px; border-radius: 14px; border: 2px dashed var(--border); background: transparent; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; }
+#sheet-bg.clear { background: transparent; }
+#sheet.compact { max-height: 54dvh; padding-top: 10px; }
+#sheet.compact .grip { margin-bottom: 6px; }
+.disp-top { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.disp-top h3 { flex: 1; margin: 0 !important; }
+.disp-top .btn { min-height: 48px; padding: 0 14px; box-shadow: none; }
+#sheet.compact .disp { padding: 8px 10px; margin: 0 0 8px; }
+.disp-r { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0; min-height: 50px; }
+.disp-r .nm { flex: 1; min-width: 0; margin: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disp-r .nm span, .disp-r .nm b { overflow: hidden; text-overflow: ellipsis; }
+.disp-r > .s { font-size: 13px; text-align: right; }
+.stepper { display: flex; align-items: center; gap: 6px; flex: none; }
+.stepper .btn, .ord .btn { width: 50px; min-width: 50px; min-height: 50px; padding: 0; justify-content: center; font-size: 24px; font-weight: 700; box-shadow: none; }
+.stepper b { min-width: 54px; text-align: center; font-size: 18px; }
+.ord { display: flex; gap: 6px; flex: none; }
+.chip.tog { min-height: 50px; padding: 0 16px; font-size: 15px; }
+.chip.tog:disabled { opacity: .45; }
+.proj-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.proj-row input, #proj-decl { font-family: 'PlexMono', monospace; font-size: 20px; }
 .avgbar { height: 10px; border-radius: 5px; background: var(--border); overflow: hidden; margin: 6px 0 4px; }
 .avgbar i { display: block; height: 100%; background: var(--accent); transition: width .4s linear; }
 .avgbar.done i { background: var(--ok); }
