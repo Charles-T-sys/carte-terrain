@@ -117,7 +117,7 @@
       }
       h.mime = TYPES[h.tileType] || 'application/octet-stream';
       return h;
-    })();
+    })().catch(function (e) { self._head = null; throw e; }); // 5.4.2 : un échec de lecture n'est pas gardé en mémoire
     return this._head;
   };
   PMTilesBlob.prototype._dir = async function (h, off, len) {

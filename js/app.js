@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.4.1';
+  var APP_VERSION = '5.4.2';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
