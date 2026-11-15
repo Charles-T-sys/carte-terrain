@@ -1,0 +1,8 @@
+NAVenza MAP 5.5.0 — cache v13 — 5 fichiers modifiés
+
+Envoyer sur GitHub dans cet ordre, avec « choose your files » (ne pas glisser de dossier) :
+1. Dossier js du dépôt  : app.js, export.js
+2. Dossier css du dépôt : styles.css
+3. Racine du dépôt      : carte_terrain.html, puis sw.js en dernier
+
+Ne pas envoyer ce fichier LISEZMOI.txt.

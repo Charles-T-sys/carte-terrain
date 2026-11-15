@@ -1,7 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.4.2';
+  var APP_VERSION = '5.5.0';
+  var NOUVEAUTES = ['Position moyennée : Point → « Position moyennée » fait la moyenne des lectures GPS pendant 30 à 120 s', 'Altitude et précision du GPS enregistrées avec chaque point et ajoutées aux exports', 'Rappel quand la dernière sauvegarde complète date de plus de 7 jours'];
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -106,7 +107,7 @@
     $('#sheet').innerHTML = '<div class="grip"></div>' + html;
     $('#sheet-bg').classList.add('open'); $('#sheet').classList.add('open');
   }
-  function closeSheet() { $('#sheet-bg').classList.remove('open'); $('#sheet').classList.remove('open'); S.sheetFns = []; }
+  function closeSheet() { $('#sheet-bg').classList.remove('open'); $('#sheet').classList.remove('open'); S.sheetFns = []; if (S.avg) stopAvg(); }
   // options : [{label, sub, icon, cls, fn, disabled}]
   function sheetOptions(title, text, options, noCancel) {
     var fns = [], html = '<h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') + '<div class="opts">';
@@ -483,6 +484,8 @@
     S.prevGPS = { lat: lat, lon: lon, t: now };
     var moved = !S.lastHereRender || hav(S.lastHereRender, { lat: lat, lon: lon }) > 30;
     S.pos = { lat: lat, lon: lon }; S.acc = c.accuracy; S.speed = spd; S.course = hdg;
+    S.alt = (c.altitude != null && isFinite(c.altitude)) ? c.altitude : null; S.altAcc = (c.altitudeAccuracy != null && isFinite(c.altitudeAccuracy)) ? c.altitudeAccuracy : null;
+    if (S.avg) avgSample(S.avg, lat, lon, c.accuracy, S.alt, S.altAcc, now);
     $('#gps-status').innerHTML = '<span class="ok">GPS ±' + Math.round(c.accuracy) + ' m</span>';
     if (S.tracing) {
       var last = S.tracePts[S.tracePts.length - 1];
@@ -548,7 +551,7 @@
 
   // ── Écran allumé pendant un tracé ou une navigation ──
   async function keepAwake() {
-    var want = S.tracing || !!S.navTarget;
+    var want = S.tracing || !!S.navTarget || !!S.avg;
     try {
       if (want && !S.wakeLock && navigator.wakeLock) { S.wakeLock = await navigator.wakeLock.request('screen'); S.wakeLock.addEventListener('release', function () { S.wakeLock = null; }); }
       if (!want && S.wakeLock) { await S.wakeLock.release(); S.wakeLock = null; }
@@ -666,6 +669,7 @@
       '<dl class="kv"><dt>Position</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon)) + '</dd>' +
       (S.coordFmt !== 'dd' ? '<dt>Décimal</dt><dd class="mono">' + esc(fmtLL(w.lat, w.lon, 'dd')) + '</dd>' : '') +
       '<dt>Copier</dt><dd class="mono" style="-webkit-user-select:text;user-select:text">' + NVCoords.plain(w.lat, w.lon) + '</dd>' +
+      gpsLines(w.gps).map(function (x) { return '<dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd>'; }).join('') +
       '<dt>Créé</dt><dd>' + esc(fmtDate(w.timestamp)) + '</dd><dt>Cartes</dt><dd>' + (cs.length ? 'Visible sur ' + pl(cs.length, 'carte') + ' : ' + esc(cs.map(function (c) { return c.name; }).join(', ')) : 'Hors de vos cartes') + '</dd>' +
       '<dt>Auteur</dt><dd>' + esc(w.author || (w.imported ? 'Bureau' : '—')) + (w.updatedBy && w.updatedBy !== w.author ? ' · modifié par ' + esc(w.updatedBy) : '') + '</dd>' +
       '<dt>Envoi</dt><dd>' + (w.sentAt ? 'Envoyé au bureau le ' + esc(fmtDate(w.sentAt)) : (w.imported && !w.modified ? 'Reçu du bureau' : 'Pas encore envoyé')) + '</dd></dl>' +
@@ -715,10 +719,67 @@
     else { try { await navigator.clipboard.writeText(text); toast('Coordonnées copiées'); } catch (e) { toast(text, 6000); } }
   }
 
+  // ══════════════ Moyenne de position GPS ══════════════
+  var AVG_MAX_ACC = 30, AVG_DURS = [30, 60, 120];
+  function avgSample(run, lat, lon, acc, alt, altAcc, t) {
+    if (run.done || t === run.lastT) return;
+    run.lastT = t;
+    if (!(acc > 0) || acc > AVG_MAX_ACC) { run.rejected++; return; }
+    run.samples.push({ lat: lat, lon: lon, acc: acc, alt: alt, altAcc: altAcc, t: t });
+  }
+  // Moyenne pondérée par 1/précision² ; dispersion = écart quadratique moyen autour de la moyenne (m)
+  function avgResult(run) {
+    var s = run.samples; if (!s.length) return null;
+    var sw = 0, la = 0, lo = 0, sa = 0;
+    s.forEach(function (p) { var w = 1 / (p.acc * p.acc); sw += w; la += p.lat * w; lo += p.lon * w; sa += p.acc; });
+    la /= sw; lo /= sw;
+    var kx = 111320 * Math.cos(rad(la)), ky = 110574, ss = 0;
+    s.forEach(function (p) { var w = 1 / (p.acc * p.acc), dx = (p.lon - lo) * kx, dy = (p.lat - la) * ky; ss += w * (dx * dx + dy * dy); });
+    var al = s.filter(function (p) { return p.alt != null; }), alt = null, altAcc = null;
+    if (al.length) { var aw = 0, as = 0, aa = 0; al.forEach(function (p) { var w = p.altAcc > 0 ? 1 / (p.altAcc * p.altAcc) : 1; aw += w; as += p.alt * w; aa += (p.altAcc || 0); }); alt = as / aw; altAcc = aa > 0 ? aa / al.length : null; }
+    return { lat: la, lon: lo, n: s.length, spread: Math.sqrt(ss / sw), acc: sa / s.length, alt: alt, altAcc: altAcc,
+      dur: Math.round(((run.doneAt || Date.now()) - run.t0) / 1000), rejected: run.rejected };
+  }
+  function startAvg() {
+    if (!S.pos) { toast('Pas encore de position GPS'); return; }
+    var run = { t0: Date.now(), dur: S.avgDur || 60, samples: [], rejected: 0, lastT: null, done: false };
+    // la dernière lecture connue compte comme première, si elle est récente
+    if (S.prevGPS && Date.now() - S.prevGPS.t < 3000) avgSample(run, S.pos.lat, S.pos.lon, S.acc, S.alt, S.altAcc, S.prevGPS.t);
+    var use = function () { var r = avgResult(run); if (!r) { toast('Aucune lecture assez précise'); return; } openWpForm(null, { lat: r.lat, lon: r.lon, gps: { src: 'moyenne', acc: r.acc, alt: r.alt, altAcc: r.altAcc, n: r.n, dur: r.dur, spread: r.spread } }); };
+    openSheet('<h3>Position moyennée</h3><p>Restez immobile, téléphone à plat ou tenu stable. ' + (navigator.wakeLock ? 'L\'écran reste allumé pendant la mesure.' : 'Gardez l\'écran allumé pendant la mesure.') + '</p><div id="avg-box"></div><div class="chips" id="avg-durs" style="margin:10px 0 2px"><span class="muted" style="font-size:14px;align-self:center">Durée</span>' + AVG_DURS.map(function (d) { return '<button class="chip' + (run.dur === d ? ' on' : '') + '" data-act="avgDur" data-id="' + d + '">' + d + ' s</button>'; }).join('') + '</div>' +
+      '<div class="opts"><button class="btn primary" data-act="sheetOpt" data-i="0" id="avg-use">' + ic('check') + '<span>Utiliser cette position</span></button><button class="btn" data-act="closeSheet">Annuler</button></div>', [use]);
+    S.avg = run; keepAwake();
+    S.avgTimer = setInterval(renderAvg, 500); renderAvg();
+  }
+  function stopAvg() { clearInterval(S.avgTimer); S.avgTimer = null; S.avg = null; keepAwake(); }
+  function renderAvg() {
+    var run = S.avg, box = $('#avg-box'); if (!run || !box) return;
+    var el = (Date.now() - run.t0) / 1000;
+    if (!run.done && el >= run.dur) { run.done = true; run.doneAt = run.t0 + run.dur * 1000; if (navigator.vibrate) navigator.vibrate(200); }
+    var r = avgResult(run), pct = Math.min(100, el / run.dur * 100);
+    box.innerHTML = '<div class="avgbar' + (run.done ? ' done' : '') + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<p class="avg-state">' + (run.done ? 'Mesure terminée — ' + run.dur + ' s' : 'Mesure en cours… ' + Math.floor(el) + ' / ' + run.dur + ' s') + '</p>' +
+      '<div class="tiles" style="margin:10px 0"><div class="tile"><span>Lectures</span><b>' + (r ? r.n : 0) + '</b></div><div class="tile"><span>Dispersion</span><b>' + (r && r.n > 1 ? num(r.spread, r.spread < 10 ? 1 : 0) + ' m' : '—') + '</b></div>' +
+      '<div class="tile"><span>Précision déclarée</span><b>' + (r ? '±' + Math.round(r.acc) + ' m' : '—') + '</b></div><div class="tile"><span>Altitude</span><b>' + (r && r.alt != null ? Math.round(r.alt) + ' m' : '—') + '</b></div></div>' +
+      '<p class="mono" style="font-size:15px;margin:0 2px">' + (r ? esc(fmtLL(r.lat, r.lon)) : 'En attente d\'une lecture à ±' + AVG_MAX_ACC + ' m ou mieux…') + '</p>' +
+      (run.rejected ? '<p class="muted" style="font-size:13px;margin:4px 2px">' + pl(run.rejected, 'lecture écartée', 'lectures écartées') + ' (précision au-delà de ' + AVG_MAX_ACC + ' m)</p>' : '');
+    var b = $('#avg-use'); if (b) b.disabled = !r;
+  }
+  var SRC_LABEL = { gps: 'GPS', moyenne: 'Position moyennée', viseur: 'Viseur', mire: 'Mire', coordonnees: 'Coordonnées saisies', deplace: 'Déplacé à la mire' };
+  function gpsLines(g) {
+    if (!g || !g.src) return [];
+    var out = [];
+    if (g.src === 'moyenne') out.push(['Précision', 'Moyenne de ' + pl(g.n, 'lecture') + ' sur ' + g.dur + ' s · dispersion ' + num(g.spread, g.spread < 10 ? 1 : 0) + ' m · ±' + Math.round(g.acc) + ' m déclarés']);
+    else if (g.src === 'gps') out.push(['Précision', g.acc != null ? '±' + Math.round(g.acc) + ' m (GPS, lecture unique)' : 'GPS']);
+    else out.push(['Source', SRC_LABEL[g.src] || g.src]);
+    if (g.alt != null) out.push(['Altitude', Math.round(g.alt) + ' m' + (g.altAcc ? ' (±' + Math.round(g.altAcc) + ' m)' : '') + ' — GPS, indicative']);
+    return out;
+  }
+
   // ══════════════ Formulaire d'un point ══════════════
   async function openWpForm(wp, latlng) {
     var lid = wp ? wp.layerId : await ensureActiveLayer();
-    var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', sym: S.lastSym || 'point', color: null, layerId: lid, lat: latlng.lat, lon: latlng.lon };
+    var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', sym: S.lastSym || 'point', color: null, layerId: lid, lat: latlng.lat, lon: latlng.lon, gps: latlng.gps || (latlng.manual ? { src: 'coordonnees' } : null) };
     var photos = wp ? (await NavDB.getPhotos(wp)).map(function (p) { return { id: p.id, data: p.data }; }) : [];
     base.props = Object.assign({}, base.props || {});
     S.form = { origStatut: base.statut || '', edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: S.coordFmt, showCoords: !!(latlng && latlng.manual) };
@@ -776,7 +837,7 @@
     html += '<div class="field"><span>Photos</span><div class="photos">' + f.photos.map(function (p, i) { return '<div class="photo"><img src="' + p.data + '" alt=""><button class="del" data-act="fPhotoDel" data-i="' + i + '" aria-label="Retirer la photo">' + ic('x', 'sm') + '</button></div>'; }).join('') +
       '<button class="photo-add" data-act="fPhotoAdd">' + ic('camera') + 'Ajouter</button></div></div>';
     html += '<label class="field"><span>Commentaire</span><textarea class="input" id="wpf-comment" rows="3">' + esc(w.comment) + '</textarea></label>';
-    html += '<div class="field"><span>Position</span><div class="mono" style="font-size:16px">' + esc(fmtLL(w.lat, w.lon)) + '</div>';
+    html += '<div class="field"><span>Position</span><div class="mono" style="font-size:16px">' + esc(fmtLL(w.lat, w.lon)) + '</div>' + gpsLines(w.gps).map(function (x) { return '<div class="muted" style="font-size:14px;line-height:1.35">' + esc(x[0]) + ' : ' + esc(x[1]) + '</div>'; }).join('');
     if (!f.showCoords) html += '<button class="btn" style="margin-top:6px" data-act="fCoords">' + ic('edit', 'sm') + 'Entrer des coordonnées</button>';
     else {
       html += '<div class="chips" style="margin:8px 0">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (f.coordFmt === x[0] ? ' on' : '') + '" data-act="fFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
@@ -796,6 +857,7 @@
       lon = part('wpf-lo') * ($('#wpf-lo-h').value === 'O' ? -1 : 1);
     }
     if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) { toast('Coordonnées invalides'); return false; }
+    if (Math.abs(lat - f.wp.lat) > 1e-7 || Math.abs(lon - f.wp.lon) > 1e-7) f.wp.gps = { src: 'coordonnees' };
     f.wp.lat = lat; f.wp.lon = lon; return true;
   }
   async function saveWpForm() {
@@ -1235,7 +1297,7 @@
   async function renderSettings() {
     var est = await NavDB.storageEstimate(), mig = await NavDB.getMeta('migrationV3'), persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) {}
-    var html = '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['soleil', 'Clair'], ['sombre', 'Sombre'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var html = '<div class="verline"><b>NAVenza MAP ' + APP_VERSION + '</b><span>' + esc(offlineState.msg) + '</span></div>' + '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['soleil', 'Clair'], ['sombre', 'Sombre'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
     html += '<div class="section-h"><h2>Format des coordonnées</h2></div><div class="chips" style="flex-wrap:wrap">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (S.coordFmt === x[0] ? ' on' : '') + '" data-act="setFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<p class="muted" style="font-size:14px;line-height:1.4;margin:4px 2px">Exemple : ' + esc(fmtLL(48.20714, -68.51233)) + '. Sur la carte, touchez la ligne des coordonnées pour changer de format.</p>';
     html += '<div class="section-h"><h2>Envoi au bureau</h2></div><div class="list">' +
@@ -1245,12 +1307,12 @@
       '<div class="row"><span class="main"><span class="t" style="color:' + (offlineState.ok ? 'var(--ok)' : 'var(--accent-text)') + '">' + esc(offlineState.msg) + '</span><span class="s">Application et bibliothèques en cache sur l\'appareil</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + (est && est.usage != null ? fmtSize(est.usage) + ' utilisés' : 'Espace utilisé inconnu') + '</span><span class="s wrap-ok">' + (est && est.quota ? 'Espace disponible pour l\'app : environ ' + fmtSize(est.quota) : 'Quota non communiqué par le système') + (persisted === true ? ' · stockage protégé' : (persisted === false ? ' · stockage non garanti par le système' : '')) + '</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + pl(S.cartes.length, 'carte') + ' · ' + pl(S.folders.length, 'dossier') + '</span><span class="s">' + pl(S.wps.length, 'point') + ' · ' + pl(S.traces.length, 'tracé') + ' · ' + pl(S.layers.length, 'calque') + '</span></span></div></div>';
-    var lb = await NavDB.getMeta('lastBackup');
+    var lb = await NavDB.getMeta('lastBackup'), nb = notBackedUp(lb);
     html += '<div class="section-h"><h2>Sauvegarde</h2></div><div style="display:flex;flex-direction:column;gap:10px">' +
       '<button class="btn block primary" data-act="backupFull">' + ic('download') + 'Sauvegarde complète (.zip, avec photos)</button>' +
       '<button class="btn block" data-act="restore">' + ic('undo') + 'Restaurer une sauvegarde</button>' +
       '<button class="btn block" data-act="backup">' + ic('download') + 'Copie GeoJSON (sans photos)</button></div>' +
-      '<p class="muted" style="font-size:14px;line-height:1.4">' + (lb ? 'Dernière sauvegarde : ' + esc(fmtDate(lb)) + '. ' : 'Aucune sauvegarde complète encore. ') + 'La sauvegarde contient points, photos, tracés, calques, dossiers et réglages, mais pas les fichiers de cartes. La restauration n\'efface rien : elle ajoute seulement ce qui manque. Elle sert aussi à transférer les données vers un nouveau téléphone.</p>';
+      '<p class="muted" style="font-size:14px;line-height:1.4">' + (lb ? 'Dernière sauvegarde : ' + esc(fmtDate(lb)) + '. ' : 'Aucune sauvegarde complète encore. ') + (nb ? '<b style="color:var(--accent-text)">' + pl(nb, 'point ou tracé', 'points ou tracés') + ' depuis.</b> ' : '') + 'La sauvegarde contient points, photos, tracés, calques, dossiers et réglages, mais pas les fichiers de cartes. La restauration n\'efface rien : elle ajoute seulement ce qui manque. Elle sert aussi à transférer les données vers un nouveau téléphone.</p>';
     if (mig) html += '<div class="section-h"><h2>Mise à jour v3</h2></div><p class="muted" style="font-size:14px;line-height:1.4">Données converties le ' + esc(fmtDate(mig.date)) + ' : ' + pl(mig.dossiers, 'dossier') + ', ' + pl(mig.cartes, 'carte') + ', ' + pl(mig.calques, 'calque') + ', ' + pl(mig.points, 'point') + ', ' + pl(mig.photos, 'photo') + ', ' + pl(mig.traces, 'tracé') + '.</p>';
     html += '<div class="section-h"><h2>À propos</h2></div><p class="muted" style="font-size:14px;line-height:1.5">NAVenza MAP ' + APP_VERSION + ' — navigation terrain hors réseau, Réserve faunique Duchénier.<br>Polices Atkinson Hyperlegible et IBM Plex Mono (licence SIL OFL 1.1). Leaflet, pdf.js, UTIF.js, JSZip.</p>';
     $('#set-body').innerHTML = html;
@@ -1324,8 +1386,9 @@
     },
     addPoint: function () {
       var opts = [];
-      if (S.viseur) { var vc = ll(S.map.getCenter()); opts.push({ label: 'Au viseur', sub: fmtLL(vc.lat, vc.lon), icon: 'move', cls: 'primary', fn: function () { openWpForm(null, vc); } }); }
-      opts.push({ label: 'À ma position GPS', sub: S.pos ? fmtLL(S.pos.lat, S.pos.lon) + ' · ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente', icon: 'locate', cls: S.viseur ? '' : 'primary', disabled: !S.pos, fn: function () { openWpForm(null, { lat: S.pos.lat, lon: S.pos.lon }); } });
+      if (S.viseur) { var vc = ll(S.map.getCenter()); opts.push({ label: 'Au viseur', sub: fmtLL(vc.lat, vc.lon), icon: 'move', cls: 'primary', fn: function () { openWpForm(null, { lat: vc.lat, lon: vc.lon, gps: { src: 'viseur' } }); } }); }
+      opts.push({ label: 'À ma position GPS', sub: S.pos ? fmtLL(S.pos.lat, S.pos.lon) + ' · ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente', icon: 'locate', cls: S.viseur ? '' : 'primary', disabled: !S.pos, fn: function () { openWpForm(null, { lat: S.pos.lat, lon: S.pos.lon, gps: { src: 'gps', acc: S.acc, alt: S.alt, altAcc: S.altAcc } }); } });
+      opts.push({ label: 'Position moyennée', sub: 'Rester immobile 30 à 120 s pour une position plus sûre', icon: 'locate', disabled: !S.pos, fn: startAvg });
       if (!S.viseur) opts.push({ label: 'Avec la mire', sub: 'Viser un endroit au centre de l\'écran', icon: 'move', fn: function () { enterMire('wp'); } });
       opts.push({ label: 'Coller des coordonnées', sub: 'Reçues par texto ou courriel', icon: 'edit', fn: pasteSheet });
       opts.push({ label: 'Entrer des coordonnées', icon: 'edit', fn: function () { var c = ll(S.map.getCenter()); openWpForm(null, { lat: c.lat, lon: c.lon, manual: true }); } });
@@ -1333,7 +1396,7 @@
     },
     viseur: function () { toggleViseur(); },
     cycleFmt: function () { var i = NVCoords.FORMATS.findIndex(function (x) { return x[0] === S.coordFmt; }), n = NVCoords.FORMATS[(i + 1) % NVCoords.FORMATS.length]; S.coordFmt = n[0]; NavDB.setMeta('coordFmt', n[0]); updateCoordsBar(); if (S.mire) updateMire(); toast('Coordonnées : ' + n[1]); },
-    pasteOk: function () { var r = S._paste; closeSheet(); if (!r) return; if (S.map && $('#view-map').classList.contains('active')) S.map.setView([r.lat, r.lon], Math.max(S.map.getZoom(), 15)); openWpForm(null, { lat: r.lat, lon: r.lon }); },
+    pasteOk: function () { var r = S._paste; closeSheet(); if (!r) return; if (S.map && $('#view-map').classList.contains('active')) S.map.setView([r.lat, r.lon], Math.max(S.map.getZoom(), 15)); openWpForm(null, { lat: r.lat, lon: r.lon, gps: { src: 'coordonnees' } }); },
     importLayer: function () { $('#file-layer').click(); },
     sendOffice: sendOffice,
     setFmt: function (el) { S.coordFmt = el.dataset.id; NavDB.setMeta('coordFmt', S.coordFmt); renderSettings(); },
@@ -1349,8 +1412,9 @@
     },
     measure: function () { if (S.mire === 'measure') exitMire(); else enterMire('measure'); },
     exitMire: exitMire, measureAdd: measureAdd, measureUndo: measureUndo,
-    mireWp: function () { var c = ll(S.map.getCenter()); exitMire(); openWpForm(null, c); },
-    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.sentAt = null; if (w.imported) w.modified = true; stamp(w); await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
+    mireWp: function () { var c = ll(S.map.getCenter()); exitMire(); openWpForm(null, { lat: c.lat, lon: c.lon, gps: { src: 'mire' } }); },
+    avgDur: function (el) { if (!S.avg) return; S.avgDur = +el.dataset.id; S.avg.dur = S.avgDur; if (S.avg.done && (Date.now() - S.avg.t0) / 1000 < S.avg.dur) { S.avg.done = false; S.avg.doneAt = null; } document.querySelectorAll('#avg-durs .chip').forEach(function (b) { b.classList.toggle('on', +b.dataset.id === S.avgDur); }); renderAvg(); },
+    mireMove: async function () { var w = wpById(S.movingWp), c = ll(S.map.getCenter()); exitMire(); if (!w) return; w.lat = c.lat; w.lon = c.lon; w.gps = { src: 'deplace' }; w.sentAt = null; if (w.imported) w.modified = true; stamp(w); await NavDB.saveWaypoint(w); renderOverlays(); toast('« ' + w.name + ' » déplacé'); },
     // Points
     openWp: function (el) { openWp(+el.dataset.id, 'points'); },
     closeWp: closeWp,
@@ -1432,6 +1496,21 @@
     if (S.form) renderWpForm();
   });
 
+  // ── Rappel de sauvegarde ──
+  function notBackedUp(lb) {
+    var after = function (iso) { return !lb || (iso || '') > lb; };
+    return S.wps.filter(function (w) { return (!w.imported || w.modified) && after(w.updatedAt || w.timestamp); }).length +
+      S.traces.filter(function (t) { return !t.imported && after(t.updatedAt || t.timestamp); }).length;
+  }
+  async function backupReminder() {
+    var lb = await NavDB.getMeta('lastBackup'), nag = await NavDB.getMeta('backupNagAt'), n = notBackedUp(lb), day = 864e5;
+    var days = lb ? (Date.now() - Date.parse(lb)) / day : Infinity;
+    if (!n || days < 7 || (nag && Date.now() - Date.parse(nag) < 3 * day)) return;
+    await NavDB.setMeta('backupNagAt', new Date().toISOString());
+    sheetOptions('Sauvegarde recommandée', (lb ? 'Dernière sauvegarde complète il y a ' + pl(Math.floor(days), 'jour') + '. ' : 'Aucune sauvegarde complète encore. ') + pl(n, 'point ou tracé', 'points ou tracés') + ' ne sont dans aucune sauvegarde : si l\'app est supprimée du téléphone, ils sont perdus.',
+      [{ label: 'Faire la sauvegarde maintenant', cls: 'primary', icon: 'download', fn: backupFull }, { label: 'Plus tard', fn: function () {} }], true);
+  }
+
   // ══════════════ Démarrage ══════════════
   function bootMsg(m, err, retry) {
     $('#boot-msg').innerHTML = '<span class="' + (err ? 'err' : '') + '">' + esc(m) + '</span>' + (retry ? '<br><br><button class="btn primary" onclick="location.reload()">Réessayer</button>' : '');
@@ -1462,12 +1541,21 @@
     var lastView = await NavDB.getMeta('lastView'), lastCarte = await NavDB.getMeta('lastCarteId');
     if (lastView === 'map' && lastCarte && carteById(lastCarte)) openMap(lastCarte); else showTab(lastView === 'points' || lastView === 'apercu' ? lastView : 'cartes');
     if (summary) sheetOptions('Vos données sont à jour', pl(summary.dossiers, 'dossier') + ', ' + pl(summary.cartes, 'carte') + ', ' + pl(summary.calques, 'calque') + ', ' + pl(summary.points, 'point') + ' (' + pl(summary.photos, 'photo') + ') et ' + pl(summary.traces, 'tracé') + ' ont été convertis. Chaque ancien projet est devenu un dossier et un calque du même nom.', [{ label: 'Compris', cls: 'primary', icon: 'check', fn: function () {} }], true);
-    var pend = await NavDB.getMeta('traceEnCours');
+    var pend = await NavDB.getMeta('traceEnCours'), sheetShown = !!summary;
     if (pend && pend.pts && pend.pts.length > 1 && !summary) {
+      sheetShown = true;
       sheetOptions('Tracé non terminé', 'Un tracé de ' + pend.pts.length + ' points (' + fmtDist(traceDist(pend.pts)) + ') n\'a pas été enregistré.', [
         { label: 'L\'enregistrer', icon: 'check', cls: 'primary', fn: async function () { await NavDB.setMeta('traceEnCours', null); await saveTracePts(pend.pts, pend.start); } },
         { label: 'Le supprimer', icon: 'trash', cls: 'danger', fn: function () { NavDB.setMeta('traceEnCours', null); } }]);
     }
+    // Avis de nouvelle version (une fois), sinon rappel de sauvegarde
+    var lastVer = await NavDB.getMeta('appVersion'); await NavDB.setMeta('appVersion', APP_VERSION);
+    var upgraded = lastVer ? lastVer !== APP_VERSION : (S.cartes.length + S.wps.length > 0);
+    if (upgraded) {
+      if (!sheetShown) { sheetShown = true; sheetOptions('Nouvelle version installée', 'NAVenza MAP ' + APP_VERSION + (lastVer ? ' (avant : ' + lastVer + ')' : '') + '. Nouveautés : ' + NOUVEAUTES.join(' ; ') + '.', [{ label: 'Compris', cls: 'primary', icon: 'check', fn: function () {} }], true); }
+      else toast('NAVenza MAP ' + APP_VERSION + ' installée', 4000);
+    }
+    if (!sheetShown) await backupReminder();
     // Emprises manquantes (cartes migrées) : en arrière-plan, une à la fois
     NavDB.fillFootprints(window.carteFootprint, function (c) {
       var k = S.cartes.findIndex(function (x) { return x.id === c.id; }); if (k >= 0) S.cartes[k] = Object.assign(S.cartes[k], c);

@@ -16,13 +16,18 @@
   function photoNames(w) { return (w.photoIds || []).map(function (_, j) { return fileId(w) + '_' + (j + 1) + '.jpg'; }); }
   function validTraces(trs) { return trs.filter(function (t) { return t.points && t.points.length > 1; }); }
 
+  // Source et qualité de la position (5.5)
+  function gpsProps(w) {
+    var g = w.gps || {}, r = function (v, d) { return v == null || !isFinite(v) ? null : +v.toFixed(d); };
+    return { pos_source: g.src || (w.imported ? 'bureau' : null), acc_m: r(g.acc, 1), alt_m: r(g.alt, 1), alt_acc_m: r(g.altAcc, 1), avg_n: g.n || null, avg_s: g.dur || null, avg_spread_m: r(g.spread, 2) };
+  }
   // ── GeoJSON (points + tracés) ──
   function geojson(wps, trs, byId, label, extra) {
     var f = wps.map(function (w) {
       return { type: 'Feature', geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
         properties: Object.assign({}, w.props || {}, { id: w.id, name: w.name, layer: layerName(byId, w.layerId), symbol: symId(w), symbol_label: symLabel(w), comment: w.comment || '',
           photo_count: (w.photoIds || []).length, photos: photoNames(w).join(';'), timestamp: w.timestamp, color: w.color || symColor(w), source: w.imported ? (w.modified ? 'bureau, modifié' : 'bureau') : 'terrain', ext_id: w.extId || null,
-          uid: w.uid || String(w.id), statut: w.statut || '', statut_date: w.statutAt || null, author: w.author || '', updated_at: w.updatedAt || w.timestamp, updated_by: w.updatedBy || '', device: w.device || '' }) };
+          uid: w.uid || String(w.id), statut: w.statut || '', statut_date: w.statutAt || null, author: w.author || '', updated_at: w.updatedAt || w.timestamp, updated_by: w.updatedBy || '', device: w.device || '' }, gpsProps(w)) };
     }).concat(validTraces(trs).map(function (t) {
       return { type: 'Feature', geometry: { type: 'LineString', coordinates: t.points.map(function (p) { return [p.lon, p.lat]; }) },
         properties: { id: t.id, uid: t.uid || String(t.id), author: t.author || '', updated_at: t.updatedAt || t.timestamp, device: t.device || '', source: t.imported ? 'bureau' : 'terrain', name: t.name || 'Tracé', layer: layerName(byId, t.layerId), timestamp: t.timestamp, points: t.points.length,
@@ -36,7 +41,7 @@
   // ── GPX (points + tracés) ──
   function gpx(wps, trs, byId, label) {
     var w = wps.map(function (p) {
-      return '  <wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.timestamp ? '<time>' + p.timestamp + '</time>' : '') +
+      return '  <wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">' + (p.gps && p.gps.alt != null && isFinite(p.gps.alt) ? '<ele>' + p.gps.alt.toFixed(1) + '</ele>' : '') + (p.timestamp ? '<time>' + p.timestamp + '</time>' : '') +
         '<name>' + escapeXml(p.name) + '</name>' + (p.comment ? '<desc>' + escapeXml(p.comment) + '</desc>' : '') +
         '<type>' + escapeXml(symLabel(p)) + '</type></wpt>';
     }).join('\n');
@@ -71,6 +76,7 @@
       }
       var desc = ['<b>' + escapeXml(symLabel(w)) + '</b>' + (w.statut ? ' — ' + escapeXml({ a_faire: 'À faire', fait: 'Fait', probleme: 'Problème' }[w.statut] || w.statut) : '')]; if (w.comment) desc.push(escapeXml(w.comment));
       Object.keys(w.props || {}).forEach(function (k) { desc.push(escapeXml(k) + ' : ' + escapeXml(String(w.props[k]))); });
+      var gq = gpsProps(w); if (gq.pos_source) desc.push('Position : ' + escapeXml(gq.pos_source) + (gq.avg_n ? ', moyenne de ' + gq.avg_n + ' lectures sur ' + gq.avg_s + ' s, dispersion ' + gq.avg_spread_m + ' m' : '') + (gq.acc_m != null ? ', ±' + Math.round(gq.acc_m) + ' m' : '') + (gq.alt_m != null ? ', altitude ' + Math.round(gq.alt_m) + ' m' : ''));
       prs.forEach(function (p) { desc.push('<img src="' + p + '" style="max-width:300px">'); });
       push(w.layerId, '  <Placemark><name>' + escapeXml(w.name) + '</name>' + (desc.length ? '<description><![CDATA[' + desc.join('<br>') + ']]></description>' : '') +
         '<TimeStamp><when>' + (w.timestamp || now) + '</when></TimeStamp><styleUrl>#wp_' + w.id + '</styleUrl><Point><coordinates>' + w.lon + ',' + w.lat + ',0</coordinates></Point></Placemark>');
@@ -159,10 +165,11 @@
       var p = shpPoints(wps), f = zip.folder('points');
       var fields = [{ name: 'NAME', type: 'C', len: 60 }, { name: 'LAYER', type: 'C', len: 60 }, { name: 'SYMBOL', type: 'C', len: 20 }, { name: 'SYMB_LABEL', type: 'C', len: 60 }, { name: 'COMMENT', type: 'C', len: 254 },
         { name: 'TIMESTAMP', type: 'C', len: 24 }, { name: 'SOURCE', type: 'C', len: 20 }, { name: 'COLOR', type: 'C', len: 10 }, { name: 'PHOTOS', type: 'N', len: 3 }, { name: 'UID', type: 'C', len: 60 }, { name: 'STATUT', type: 'C', len: 12 }, { name: 'AUTHOR', type: 'C', len: 40 }, { name: 'UPDATED', type: 'C', len: 24 },
-        { name: 'LAT', type: 'N', len: 12, dec: 7 }, { name: 'LON', type: 'N', len: 13, dec: 7 }];
+        { name: 'LAT', type: 'N', len: 12, dec: 7 }, { name: 'LON', type: 'N', len: 13, dec: 7 },
+        { name: 'POS_SRC', type: 'C', len: 12 }, { name: 'ACC_M', type: 'N', len: 8, dec: 1 }, { name: 'ALT_M', type: 'N', len: 8, dec: 1 }, { name: 'AVG_N', type: 'N', len: 5 }, { name: 'AVG_S', type: 'N', len: 5 }, { name: 'AVG_SPR_M', type: 'N', len: 8, dec: 2 }];
       f.file('points.shp', p.shp); f.file('points.shx', p.shx); f.file('points.prj', prj); f.file('points.cpg', 'UTF-8');
-      f.file('points.dbf', dbf(wps.map(function (w) { return { NAME: w.name || '', LAYER: layerName(byId, w.layerId), SYMBOL: symId(w), SYMB_LABEL: symLabel(w), COMMENT: w.comment || '', TIMESTAMP: (w.timestamp || '').slice(0, 24),
-        SOURCE: w.imported ? (w.modified ? 'bureau-modifie' : 'bureau') : 'terrain', COLOR: w.color || symColor(w), PHOTOS: (w.photoIds || []).length, UID: w.uid || String(w.id), STATUT: w.statut || '', AUTHOR: w.author || '', UPDATED: (w.updatedAt || w.timestamp || '').slice(0, 24), LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }; }), fields));
+      f.file('points.dbf', dbf(wps.map(function (w) { return Object.assign({ NAME: w.name || '', LAYER: layerName(byId, w.layerId), SYMBOL: symId(w), SYMB_LABEL: symLabel(w), COMMENT: w.comment || '', TIMESTAMP: (w.timestamp || '').slice(0, 24),
+        SOURCE: w.imported ? (w.modified ? 'bureau-modifie' : 'bureau') : 'terrain', COLOR: w.color || symColor(w), PHOTOS: (w.photoIds || []).length, UID: w.uid || String(w.id), STATUT: w.statut || '', AUTHOR: w.author || '', UPDATED: (w.updatedAt || w.timestamp || '').slice(0, 24), LAT: w.lat.toFixed(7), LON: w.lon.toFixed(7) }, (function (g) { var f = function (v, d) { return v == null ? '' : v.toFixed(d); }; return { POS_SRC: g.pos_source || '', ACC_M: f(g.acc_m, 1), ALT_M: f(g.alt_m, 1), AVG_N: g.avg_n || '', AVG_S: g.avg_s || '', AVG_SPR_M: f(g.avg_spread_m, 2) }; })(gpsProps(w))); }), fields));
     }
     if (vt.length) {
       var l = shpLines(vt), g = zip.folder('traces');
