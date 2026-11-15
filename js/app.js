@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.4.0';
+  var APP_VERSION = '5.4.1';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -317,6 +317,26 @@
   }
   // ══════════════ Fonds (mosaïques en tuiles) et transparences ══════════════
   function saveFonds() { return NavDB.setMeta('fonds', S.fonds); }
+  // Ordre des couches (bas -> haut) : mosaïques et carte ouverte. Ordre par défaut : mosaïques normales par étendue,
+  // carte ouverte juste au-dessus, ombrages tout en haut. Un ordre choisi par l'utilisateur (S.ordre) le remplace.
+  function ordreEffectif() {
+    var ouvert = S.carte && isFond(S.carte) ? S.carte.id : null;
+    var fonds = S.cartes.filter(isFond), isBlend = function (c) { return !!(S.fonds[c.id] && S.fonds[c.id].blend); };
+    var def = fonds.filter(function (c) { return c.id !== ouvert; }).sort(function (a, b) { return ((isBlend(a) ? 1 : 0) - (isBlend(b) ? 1 : 0)) || (bboxArea(b) - bboxArea(a)); });
+    if (ouvert) {
+      var k = 0; def.forEach(function (c, i) { if (!isBlend(c)) k = i + 1; });
+      def.splice(k, 0, fonds.filter(function (c) { return c.id === ouvert; })[0]);
+    }
+    var ids = def.map(function (c) { return c.id; });
+    var sauv = (S.ordre || []).filter(function (id) { return ids.indexOf(id) >= 0; });
+    return sauv.concat(ids.filter(function (id) { return sauv.indexOf(id) < 0; }));
+  }
+  function fondMove(el) {
+    var id = el.dataset.id, d = +el.dataset.dir, o = ordreEffectif(), i = o.indexOf(id), j = i + d;
+    if (i < 0 || j < 0 || j >= o.length) return;
+    o.splice(i, 1); o.splice(j, 0, id); S.ordre = o;
+    NavDB.setMeta('ordreCouches', o); applyFonds(); displaySheet();
+  }
   function saveCarteStyle() { return NavDB.setMeta('carteStyle', { op: S.carteOpacity, blend: S.carteBlend }); }
   function applyCarteStyle() {
     if (!S.map) return;
@@ -328,17 +348,16 @@
   function applyFonds() { _fondsQ = _fondsQ.then(doApplyFonds).catch(function (e) { console.warn('[fonds]', e); toast('Fond illisible : ' + (e && e.message || e), 5000); }); return _fondsQ; }
   async function doApplyFonds() {
     if (!S.map) return;
-    var wanted = S.cartes.filter(function (c) { return isFond(c) && S.fonds[c.id] && S.fonds[c.id].on && !(S.carte && S.carte.id === c.id); });
+    var ordre = ordreEffectif(), zOf = {};
+    ordre.forEach(function (id, i) { zOf[id] = i + 1; });
+    var wanted = ordre.map(function (id) { return S.cartes.filter(function (c) { return c.id === id; })[0]; })
+      .filter(function (c) { return c && S.fonds[c.id] && S.fonds[c.id].on && !(S.carte && S.carte.id === c.id); });
     Object.keys(S.fondLayers).forEach(function (id) {
       if (!wanted.some(function (c) { return c.id === id; })) { S.map.removeLayer(S.fondLayers[id]); delete S.fondLayers[id]; }
     });
-    // Mosaïques d'abord (la plus grande dessous), ombrages par-dessus
-    wanted.sort(function (a, b) { return ((S.fonds[a.id].blend ? 1 : 0) - (S.fonds[b.id].blend ? 1 : 0)) || (bboxArea(b) - bboxArea(a)); });
-    // Une mosaïque ouverte comme carte passe au-dessus des autres mosaïques, sous les ombrages
-    var nNormal = wanted.filter(function (c) { return !S.fonds[c.id].blend; }).length;
-    if (isFond(S.carte) && S.carteLayer && S.carteLayer.setZIndex) S.carteLayer.setZIndex(nNormal + 1);
+    if (isFond(S.carte) && S.carteLayer && S.carteLayer.setZIndex && zOf[S.carte.id]) S.carteLayer.setZIndex(zOf[S.carte.id]);
     for (var i = 0; i < wanted.length; i++) {
-      var c = wanted[i], st = S.fonds[c.id], lyr = S.fondLayers[c.id], zi = i + 1 + (st.blend && isFond(S.carte) ? 1 : 0);
+      var c = wanted[i], st = S.fonds[c.id], lyr = S.fondLayers[c.id], zi = zOf[c.id];
       if (!lyr) {
         var blob = await NavDB.getCarteBlob(c.id); if (!blob) continue;
         var info = await window.NVPmtiles.info(blob);
@@ -351,18 +370,21 @@
   }
   function pct(v) { return Math.round(v * 100) + ' %'; }
   function displaySheet() {
-    var fonds = S.cartes.filter(isFond).sort(function (a, b) { return a.name.localeCompare(b.name, 'fr', { numeric: true }); });
+    var ordre = ordreEffectif(), fonds = ordre.slice().reverse().map(function (id) { return S.cartes.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
+    var nOrd = ordre.length;
     var html = '<h3>Affichage</h3>';
     if (S.carte && !isFond(S.carte)) {
       html += '<div class="disp"><div class="disp-h"><b>' + esc(S.carte.name) + '</b><span class="mono muted" id="disp-carteOp">' + pct(S.carteOpacity) + '</span></div>' +
         '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(S.carteOpacity * 100) + '" data-disp="carteOp" aria-label="Opacité de la carte">' +
         '<label class="chk"><input type="checkbox" data-disp="carteBlend"' + (S.carteBlend ? ' checked' : '') + '><span>Rendre le blanc transparent<span class="s">Le papier de la carte disparaît, le fond apparaît dessous</span></span></label></div>';
     }
-    html += '<div class="section-h" style="margin:14px 2px 6px"><h2 style="font-size:17px">Fonds</h2></div>';
+    html += '<div class="section-h" style="margin:14px 2px 6px"><h2 style="font-size:17px">Fonds</h2></div><p class="muted" style="margin:0 2px 8px;font-size:13px">Ordre des couches : la première en haut est dessus. ▲ ▼ pour changer.</p>';
     if (!fonds.length) html += '<p class="muted" style="margin:0 2px 12px">Aucune mosaïque. Importez un fichier .pmtiles (orthophoto, relief) dans la bibliothèque.</p>';
     fonds.forEach(function (c) {
       var st = S.fonds[c.id] || { on: false, op: 1, blend: false }, ouvert = S.carte && S.carte.id === c.id, on = st.on || ouvert;
-      html += '<div class="disp' + (on ? '' : ' off') + '"><label class="chk" style="margin:0"><input type="checkbox" data-disp="fondOn" data-id="' + esc(c.id) + '"' + (on ? ' checked' : '') + (ouvert ? ' disabled' : '') + '><span><b>' + esc(c.name) + '</b>' + (ouvert ? '<span class="s">Carte ouverte</span>' : '') + '</span></label>' +
+      var pos = ordre.indexOf(c.id);
+      html += '<div class="disp' + (on ? '' : ' off') + '"><div class="disp-h"><label class="chk" style="margin:0;flex:1"><input type="checkbox" data-disp="fondOn" data-id="' + esc(c.id) + '"' + (on ? ' checked' : '') + (ouvert ? ' disabled' : '') + '><span><b>' + esc(c.name) + '</b>' + (ouvert ? '<span class="s">Carte ouverte</span>' : '') + '</span></label>' +
+        '<span class="opts" style="margin:0"><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="1" aria-label="Monter"' + (pos >= nOrd - 1 ? ' disabled' : '') + '>▲</button><button class="btn" data-act="fondMove" data-id="' + esc(c.id) + '" data-dir="-1" aria-label="Descendre"' + (pos <= 0 ? ' disabled' : '') + '>▼</button></span></div>' +
         (ouvert ? '' : '<div class="disp-h"><span class="muted">Opacité</span><span class="mono muted" id="disp-op-' + esc(c.id) + '">' + pct(st.op) + '</span></div>' +
         '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(st.op * 100) + '" data-disp="fondOp" data-id="' + esc(c.id) + '"' + (st.on ? '' : ' disabled') + ' aria-label="Opacité de ' + esc(c.name) + '">' +
         '<label class="chk"><input type="checkbox" data-disp="fondBlend" data-id="' + esc(c.id) + '"' + (st.blend ? ' checked' : '') + (st.on ? '' : ' disabled') + '><span>Ombrage<span class="s">Se fond avec la mosaïque dessous (pour un relief)</span></span></label>') + '</div>';
@@ -1241,6 +1263,7 @@
 
   // ══════════════ Actions (délégation d'événements) ══════════════
   var ACT = {
+    fondMove: function (el) { fondMove(el); },
     tab: function (el) { showTab(el.dataset.tab); },
     closeSheet: closeSheet,
     sheetOpt: function (el) { var fn = S.sheetFns[+el.dataset.i]; closeSheet(); if (fn) fn(); },
@@ -1424,7 +1447,7 @@
     await loadAll();
     S.deviceId = await NavDB.getMeta('deviceId'); if (!S.deviceId) { S.deviceId = newUid(); await NavDB.setMeta('deviceId', S.deviceId); }
     S.activeLayerId = (await NavDB.getMeta('activeLayerId')) || null;
-    S.fonds = (await NavDB.getMeta('fonds')) || {}; var cs = (await NavDB.getMeta('carteStyle')) || {}; S.carteOpacity = cs.op == null ? 1 : cs.op; S.carteBlend = !!cs.blend;
+    S.fonds = (await NavDB.getMeta('fonds')) || {}; S.ordre = (await NavDB.getMeta('ordreCouches')) || []; var cs = (await NavDB.getMeta('carteStyle')) || {}; S.carteOpacity = cs.op == null ? 1 : cs.op; S.carteBlend = !!cs.blend;
     S.coordFmt = (await NavDB.getMeta('coordFmt')) || 'dd'; S.employee = (await NavDB.getMeta('employee')) || ''; S.officeEmail = (await NavDB.getMeta('officeEmail')) || 'faune@terfa.ca';
     try { await ensureUids(); } catch (e) { console.warn('[app] uid :', e); }
     startGPS();
