@@ -38,7 +38,7 @@
 		this._map = map;
 		this._canvas = document.createElement('canvas');
 		this._canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-		map.getPanes().mapPane.appendChild(this._canvas);
+		(map.getPane('cartePane') || map.getPanes().mapPane).appendChild(this._canvas);
 		this._offscreen = document.createElement('canvas');
 		this._zooming = false;
 
@@ -509,7 +509,7 @@
       var c = this._canvas = document.createElement('canvas');
       c.className = 'leaflet-zoom-animated';
       c.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-      map.getPane('tilePane').appendChild(c);
+      (map.getPane('cartePane') || map.getPane('tilePane')).appendChild(c);
       this._hi = document.createElement('canvas');
       map.on('moveend resize', this._schedule, this);
       map.on('zoomanim', this._animateZoom, this);
@@ -705,19 +705,28 @@
 
 
 // ── Emprise d'une carte, sans rendu (v3) ──
-// Retourne { kind:'pdf'|'tiff', footprint:[[lat,lon]×4], bbox:[ouest,sud,est,nord] }
+// Retourne { kind:'pdf'|'tiff'|'tuiles', footprint:[[lat,lon]×4], bbox:[ouest,sud,est,nord] }
 (function() {
   function fromCorners(c) {
     var lats = c.map(function(p) { return p[0]; }), lons = c.map(function(p) { return p[1]; });
     return { footprint: c, bbox: [Math.min.apply(null, lons), Math.min.apply(null, lats), Math.max.apply(null, lons), Math.max.apply(null, lats)] };
   }
   function carteKind(ab) {
+    var u8 = new Uint8Array(ab, 0, Math.min(8, ab.byteLength));
+    if (window.NVPmtiles && window.NVPmtiles.isPmtiles(u8)) return 'tuiles';
     if (window.isPdfBuffer(ab)) return 'pdf';
     var u = new Uint8Array(ab, 0, Math.min(4, ab.byteLength));
     if ((u[0] === 0x49 && u[1] === 0x49 && u[2] === 0x2A) || (u[0] === 0x4D && u[1] === 0x4D && u[3] === 0x2A)) return 'tiff';
     return null;
   }
   async function carteFootprint(blob) {
+    // Mosaïque en tuiles : seul l'en-tête est lu (le fichier peut faire des centaines de Mo)
+    var head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+    if (window.NVPmtiles && window.NVPmtiles.isPmtiles(head)) {
+      var h = (await window.NVPmtiles.info(blob)).header;
+      var r0 = fromCorners([[h.maxLat, h.minLon], [h.maxLat, h.maxLon], [h.minLat, h.maxLon], [h.minLat, h.minLon]]);
+      r0.kind = 'tuiles'; return r0;
+    }
     var ab = await blob.arrayBuffer();
     var kind = carteKind(ab);
     if (kind === 'pdf') {

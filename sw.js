@@ -5,7 +5,7 @@
 const BASE_PATH = new URL('./', self.location).pathname;
 // Copie de test : caches « nvtest-… », jamais touchés par la production (qui efface seulement « navenza-… »)
 const PREFIX = /-test\/$/.test(BASE_PATH) ? 'nvtest-' : 'navenza-';
-const CACHE_NAME = PREFIX + 'v10';
+const CACHE_NAME = PREFIX + 'v11';
 const BASE = BASE_PATH;   // '/carte-terrain/' ou '/carte-terrain-test/' sur GitHub Pages
 const HTML = BASE + 'carte_terrain.html';
 const CORE = [
