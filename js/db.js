@@ -3,7 +3,9 @@
 (function () {
   'use strict';
 
-  var DB_NAME = 'carte_terrain_db_v2';
+  // Copie de test (dépôt « …-test ») : base séparée, pour ne jamais toucher aux données de production
+  var IS_TEST = /-test\//.test(location.pathname);
+  var DB_NAME = IS_TEST ? 'navenza_test_db' : 'carte_terrain_db_v2';
   var DB_VER = 3;
   var SCHEMA = 3;
   var db = null;
@@ -305,7 +307,7 @@
   }
 
   window.NavDB = {
-    DB_NAME: DB_NAME, DB_VER: DB_VER,
+    DB_NAME: DB_NAME, DB_VER: DB_VER, IS_TEST: IS_TEST,
     open: open, migrate: migrate, fillFootprints: fillFootprints,
     getMeta: getMeta, setMeta: setMeta, uid: uid,
     listFolders: listFolders, saveFolder: saveFolder, deleteFolder: deleteFolder,

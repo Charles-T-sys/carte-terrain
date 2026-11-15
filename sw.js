@@ -1,14 +1,17 @@
-// sw.js — NAVenza MAP 5.3 (navenza-v8)
+// sw.js — NAVenza MAP 5.3.1 (navenza-v9 / nvtest-v9)
 // Hors ligne d'abord : tous les fichiers de l'app sont pré-cachés à l'installation.
 // Une nouvelle version ne s'installe QUE par un nouveau CACHE_NAME : la page et ses scripts
 // viennent toujours du même lot (pas de mélange ancienne page / nouveaux scripts).
-const CACHE_NAME = 'navenza-v8';
-const BASE = new URL('./', self.location).pathname;   // '/carte-terrain/' sur GitHub Pages
+const BASE_PATH = new URL('./', self.location).pathname;
+// Copie de test : caches « nvtest-… », jamais touchés par la production (qui efface seulement « navenza-… »)
+const PREFIX = /-test\/$/.test(BASE_PATH) ? 'nvtest-' : 'navenza-';
+const CACHE_NAME = PREFIX + 'v10';
+const BASE = BASE_PATH;   // '/carte-terrain/' ou '/carte-terrain-test/' sur GitHub Pages
 const HTML = BASE + 'carte_terrain.html';
 const CORE = [
   'carte_terrain.html', 'manifest.json',
   'css/styles.css',
-  'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
+  'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
   'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
   'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2',
   'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2',
@@ -28,7 +31,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k.startsWith('navenza-') && k !== CACHE_NAME).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k.startsWith(PREFIX) && k !== CACHE_NAME).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });

@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.3.0';
+  var APP_VERSION = '5.4.0';
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -58,6 +58,7 @@
     mire: null, measurePts: [], measureLayers: [], elastic: null, movingWp: null,
     form: null, wpOpen: null, wpReturn: null, sheetFns: [], deviceId: '', ptsStat: '',
     ov: null, ovFolder: 'all', ovLayers: null, ovPos: null,
+    fonds: {}, fondLayers: {}, carteOpacity: 1, carteBlend: false,
     activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null
   };
   function newUid() {
@@ -159,9 +160,11 @@
 
   // ══════════════ Bibliothèque ══════════════
   function cartesIn(fid) { return S.cartes.filter(function (c) { return fid === 'none' ? !c.folderId || !folderById(c.folderId) : c.folderId === fid; }).sort(function (a, b) { return a.name.localeCompare(b.name, 'fr', { numeric: true }); }); }
+  function kindLabel(c) { return c.kind === 'tuiles' ? 'Mosaïque en tuiles' : c.kind === 'tiff' ? 'GeoTIFF' : 'GeoPDF'; }
+  function isFond(c) { return c && c.kind === 'tuiles'; }
   function carteRow(c, showFolder) {
     var here = S.pos && covers(c, S.pos.lat, S.pos.lon), f = folderById(c.folderId);
-    var sub = (c.kind === 'tiff' ? 'GeoTIFF' : 'PDF') + ' · ' + fmtSize(c.bytes || 0) + (showFolder && f ? ' · ' + f.name : '') +
+    var sub = kindLabel(c) + (isFond(c) && S.fonds[c.id] && S.fonds[c.id].on ? ' · fond affiché' : '') + ' · ' + fmtSize(c.bytes || 0) + (showFolder && f ? ' · ' + f.name : '') +
       (c.footprintError ? ' · emprise illisible' : (!c.footprint ? ' · emprise en calcul' : ''));
     return '<div class="row' + (here ? ' here' : '') + '"><button class="row" style="border:none;padding:0;min-height:52px" data-act="openCarte" data-id="' + esc(c.id) + '">' + fpIcon(c) +
       '<span class="main"><span class="t">' + esc(c.name) + '</span><span class="s">' + esc(sub) + '</span></span>' + (here ? '<span class="badge">ici</span>' : '') + '</button>' +
@@ -216,8 +219,10 @@
       var f = files[i];
       toast('Import ' + (i + 1) + '/' + files.length + ' : ' + f.name, 20000);
       try {
+        var head = new Uint8Array(await f.slice(0, 8).arrayBuffer());
+        if (window.NVPmtiles.isPmtiles(head)) { done.push(await importTuiles(f, folderId)); continue; }
         var ab = await f.arrayBuffer(), kind = window.carteKind(ab);
-        if (!kind) throw new Error('format non reconnu (GeoPDF ou GeoTIFF attendu)');
+        if (!kind) throw new Error('format non reconnu (GeoPDF, GeoTIFF ou mosaïque .pmtiles attendu)');
         var blob = new Blob([ab], { type: kind === 'pdf' ? 'application/pdf' : 'image/tiff' });
         var fp = await window.carteFootprint(blob);
         var name = f.name.replace(/\.(pdf|tiff?)$/i, '').replace(/_/g, ' ').trim();
@@ -230,7 +235,19 @@
     }
     toast(done.length ? done.length + ' carte' + (done.length > 1 ? 's importées' : ' importée') : 'Aucune carte importée');
     renderLib();
-    if (done.length === 1) sheetOptions('Carte importée', done[0].name, [{ label: 'Ouvrir maintenant', icon: 'map', cls: 'primary', fn: function () { openMap(done[0].id); } }, { label: 'Rester dans la bibliothèque', fn: function () {} }], true);
+    if (done.length === 1 && isFond(done[0])) sheetOptions('Mosaïque importée', '« ' + done[0].name + ' » est affichée en fond, sous vos cartes PDF et GeoTIFF. Réglez la transparence avec le bouton Calques sur la carte.', [{ label: 'Ouvrir maintenant', icon: 'map', cls: 'primary', fn: function () { openMap(done[0].id); } }, { label: 'Rester dans la bibliothèque', fn: function () {} }], true);
+    else if (done.length === 1) sheetOptions('Carte importée', done[0].name, [{ label: 'Ouvrir maintenant', icon: 'map', cls: 'primary', fn: function () { openMap(done[0].id); } }, { label: 'Rester dans la bibliothèque', fn: function () {} }], true);
+  }
+  async function importTuiles(f, folderId) {
+    var info = await window.NVPmtiles.info(f), h = info.header;
+    if (h.tileType === 1 || h.tileType > 5) throw new Error('mosaïque vectorielle non prise en charge (images attendues)');
+    var fp = await window.carteFootprint(f);
+    var name = (h.metadata && h.metadata.name) || f.name.replace(/\.pmtiles$/i, '').replace(/_/g, ' ').trim();
+    var c = await NavDB.addCarte({ name: name, kind: 'tuiles', fileName: f.name, folderId: folderId, footprint: fp.footprint, bbox: fp.bbox, minZoom: h.minZoom, maxZoom: h.maxZoom }, f);
+    S.cartes.push(c);
+    S.fonds[c.id] = { on: true, op: 1, blend: /relief|ombr/i.test(name + ' ' + f.name) };
+    await saveFonds();
+    return c;
   }
   async function moveCarteSheet(c) {
     var opts = S.folders.map(function (f) { return { label: f.name, icon: 'folder', cls: f.id === c.folderId ? 'primary' : '', fn: async function () { c.folderId = f.id; await NavDB.saveCarte(c); renderLib(); toast('Déplacée dans « ' + f.name + ' »'); } }; });
@@ -244,6 +261,7 @@
     if (S.map) return;
     S.map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 120, maxZoom: 21, minZoom: 6 });
     S.map.setView([48.15, -68.6], 12);
+    S.map.createPane('cartePane').style.zIndex = 250;
     S.trGroup = L.layerGroup().addTo(S.map);
     S.wpGroup = L.layerGroup().addTo(S.map);
     S.map.on('zoomend', function () { $('#map').classList.toggle('labels', S.map.getZoom() >= 15.5); });
@@ -275,6 +293,13 @@
       else if (S.pos && covers(c, S.pos.lat, S.pos.lon)) S.map.setView([S.pos.lat, S.pos.lon], 15);
       else if (c.bbox) S.map.fitBounds([[c.bbox[1], c.bbox[0]], [c.bbox[3], c.bbox[2]]]);
       else keep = false;
+      if (isFond(c)) {
+        var info = await window.NVPmtiles.info(blob);
+        if (S.carte !== c) return;
+        S.carteLayer = new window.NVPmtiles.Layer(info.pm, info.header, { zIndex: 0 }); // reste sous les ombrages
+        S.carteLayer.addTo(S.map);
+        c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c); NavDB.setMeta('lastCarteId', id);
+      } else {
       toast('Ouverture de « ' + c.name + ' »…', 8000);
       var ab = await blob.arrayBuffer();
       if (S.carte !== c) return; // une autre carte a été demandée entre-temps
@@ -284,9 +309,74 @@
       S.carteLayer.addTo(S.map);
       c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c);
       NavDB.setMeta('lastCarteId', id);
+      }
+      applyFonds(); applyCarteStyle();
     } else if (opts.center) S.map.setView(opts.center, opts.zoom || Math.max(S.map.getZoom(), 15));
     NavDB.setMeta('lastView', 'map');
     renderOverlays(); updateMapHeader(); updatePosMarker(); updateCoordsBar(); updateNav(); updateRec();
+  }
+  // ══════════════ Fonds (mosaïques en tuiles) et transparences ══════════════
+  function saveFonds() { return NavDB.setMeta('fonds', S.fonds); }
+  function saveCarteStyle() { return NavDB.setMeta('carteStyle', { op: S.carteOpacity, blend: S.carteBlend }); }
+  function applyCarteStyle() {
+    if (!S.map) return;
+    var p = S.map.getPane('cartePane'), fondOuvert = isFond(S.carte);
+    p.style.opacity = fondOuvert ? 1 : S.carteOpacity;
+    p.classList.toggle('blend-multiply', !fondOuvert && S.carteBlend);
+  }
+  var _fondsQ = Promise.resolve();
+  function applyFonds() { _fondsQ = _fondsQ.then(doApplyFonds).catch(function (e) { console.warn('[fonds]', e); toast('Fond illisible : ' + (e && e.message || e), 5000); }); return _fondsQ; }
+  async function doApplyFonds() {
+    if (!S.map) return;
+    var wanted = S.cartes.filter(function (c) { return isFond(c) && S.fonds[c.id] && S.fonds[c.id].on && !(S.carte && S.carte.id === c.id); });
+    Object.keys(S.fondLayers).forEach(function (id) {
+      if (!wanted.some(function (c) { return c.id === id; })) { S.map.removeLayer(S.fondLayers[id]); delete S.fondLayers[id]; }
+    });
+    // Mosaïques d'abord (la plus grande dessous), ombrages par-dessus
+    wanted.sort(function (a, b) { return ((S.fonds[a.id].blend ? 1 : 0) - (S.fonds[b.id].blend ? 1 : 0)) || (bboxArea(b) - bboxArea(a)); });
+    // Une mosaïque ouverte comme carte passe au-dessus des autres mosaïques, sous les ombrages
+    var nNormal = wanted.filter(function (c) { return !S.fonds[c.id].blend; }).length;
+    if (isFond(S.carte) && S.carteLayer && S.carteLayer.setZIndex) S.carteLayer.setZIndex(nNormal + 1);
+    for (var i = 0; i < wanted.length; i++) {
+      var c = wanted[i], st = S.fonds[c.id], lyr = S.fondLayers[c.id], zi = i + 1 + (st.blend && isFond(S.carte) ? 1 : 0);
+      if (!lyr) {
+        var blob = await NavDB.getCarteBlob(c.id); if (!blob) continue;
+        var info = await window.NVPmtiles.info(blob);
+        lyr = S.fondLayers[c.id] = new window.NVPmtiles.Layer(info.pm, info.header, { zIndex: zi });
+        lyr.addTo(S.map);
+      }
+      lyr.setZIndex(zi); lyr.setOpacity(st.op);
+      var el = lyr.getContainer(); if (el) el.classList.toggle('blend-multiply', !!st.blend);
+    }
+  }
+  function pct(v) { return Math.round(v * 100) + ' %'; }
+  function displaySheet() {
+    var fonds = S.cartes.filter(isFond).sort(function (a, b) { return a.name.localeCompare(b.name, 'fr', { numeric: true }); });
+    var html = '<h3>Affichage</h3>';
+    if (S.carte && !isFond(S.carte)) {
+      html += '<div class="disp"><div class="disp-h"><b>' + esc(S.carte.name) + '</b><span class="mono muted" id="disp-carteOp">' + pct(S.carteOpacity) + '</span></div>' +
+        '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(S.carteOpacity * 100) + '" data-disp="carteOp" aria-label="Opacité de la carte">' +
+        '<label class="chk"><input type="checkbox" data-disp="carteBlend"' + (S.carteBlend ? ' checked' : '') + '><span>Rendre le blanc transparent<span class="s">Le papier de la carte disparaît, le fond apparaît dessous</span></span></label></div>';
+    }
+    html += '<div class="section-h" style="margin:14px 2px 6px"><h2 style="font-size:17px">Fonds</h2></div>';
+    if (!fonds.length) html += '<p class="muted" style="margin:0 2px 12px">Aucune mosaïque. Importez un fichier .pmtiles (orthophoto, relief) dans la bibliothèque.</p>';
+    fonds.forEach(function (c) {
+      var st = S.fonds[c.id] || { on: false, op: 1, blend: false }, ouvert = S.carte && S.carte.id === c.id, on = st.on || ouvert;
+      html += '<div class="disp' + (on ? '' : ' off') + '"><label class="chk" style="margin:0"><input type="checkbox" data-disp="fondOn" data-id="' + esc(c.id) + '"' + (on ? ' checked' : '') + (ouvert ? ' disabled' : '') + '><span><b>' + esc(c.name) + '</b>' + (ouvert ? '<span class="s">Carte ouverte</span>' : '') + '</span></label>' +
+        (ouvert ? '' : '<div class="disp-h"><span class="muted">Opacité</span><span class="mono muted" id="disp-op-' + esc(c.id) + '">' + pct(st.op) + '</span></div>' +
+        '<input type="range" class="range" min="0" max="100" step="5" value="' + Math.round(st.op * 100) + '" data-disp="fondOp" data-id="' + esc(c.id) + '"' + (st.on ? '' : ' disabled') + ' aria-label="Opacité de ' + esc(c.name) + '">' +
+        '<label class="chk"><input type="checkbox" data-disp="fondBlend" data-id="' + esc(c.id) + '"' + (st.blend ? ' checked' : '') + (st.on ? '' : ' disabled') + '><span>Ombrage<span class="s">Se fond avec la mosaïque dessous (pour un relief)</span></span></label>') + '</div>';
+    });
+    html += '<div class="opts" style="margin-top:12px"><button class="btn" data-act="pointLayersSheet">' + ic('layers') + '<span>Calques de points et tracés</span></button><button class="btn primary" data-act="closeSheet">Fermer</button></div>';
+    openSheet(html);
+  }
+  async function onDisp(el, final) {
+    var k = el.dataset.disp, c = el.dataset.id, st = c ? (S.fonds[c] = S.fonds[c] || { on: false, op: 1, blend: false }) : null;
+    if (k === 'carteOp') { S.carteOpacity = el.value / 100; $('#disp-carteOp').textContent = pct(S.carteOpacity); applyCarteStyle(); if (final) saveCarteStyle(); return; }
+    if (k === 'carteBlend') { S.carteBlend = el.checked; applyCarteStyle(); saveCarteStyle(); return; }
+    if (k === 'fondOp') { st.op = el.value / 100; var t = document.getElementById('disp-op-' + c); if (t) t.textContent = pct(st.op); if (S.fondLayers[c]) S.fondLayers[c].setOpacity(st.op); if (final) saveFonds(); return; }
+    if (k === 'fondBlend') { st.blend = el.checked; await saveFonds(); applyFonds(); return; }
+    if (k === 'fondOn') { st.on = el.checked; await saveFonds(); applyFonds(); displaySheet(); renderLib(); }
   }
   function updateMapHeader() {
     if (!S.carte) return;
@@ -1105,7 +1195,7 @@
   }
 
   // ══════════════ Réglages ══════════════
-  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
+  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
     'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
     'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2', 'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2'];
   var offlineState = { ok: false, msg: 'Vérification…' };
@@ -1175,7 +1265,7 @@
     },
     carteMenu: function (el) {
       var c = carteById(el.dataset.id); if (!c) return;
-      sheetOptions(c.name, (c.kind === 'tiff' ? 'GeoTIFF' : 'GeoPDF') + ' · ' + fmtSize(c.bytes || 0) + (c.fileName ? ' · ' + c.fileName : ''), [
+      sheetOptions(c.name, kindLabel(c) + ' · ' + fmtSize(c.bytes || 0) + (c.fileName ? ' · ' + c.fileName : ''), [
         { label: 'Ouvrir', icon: 'map', cls: 'primary', fn: function () { openMap(c.id); } },
         { label: 'Renommer', icon: 'edit', fn: async function () { var v = await askText('Renommer la carte', c.name); if (!v) return; c.name = v; await NavDB.saveCarte(c); renderLib(); if (S.carte && S.carte.id === c.id) updateMapHeader(); } },
         { label: 'Déplacer vers un dossier', icon: 'folder', fn: function () { moveCarteSheet(c); } },
@@ -1183,6 +1273,7 @@
           if (!await confirmSheet('Supprimer cette carte ?', '« ' + c.name + ' » sera effacée de l\'appareil. Vos points et tracés sont conservés.', 'Supprimer', true)) return;
           await NavDB.deleteCarte(c.id); S.cartes = S.cartes.filter(function (x) { return x.id !== c.id; });
           if (S.carte && S.carte.id === c.id) { if (S.carteLayer) S.map.removeLayer(S.carteLayer); S.carteLayer = null; S.carte = null; }
+          if (S.fonds[c.id]) { delete S.fonds[c.id]; saveFonds(); applyFonds(); }
           renderLib(); toast('Carte supprimée'); } }
       ]);
     },
@@ -1202,8 +1293,9 @@
     stopNav: stopNav,
     edgeOpen: function () { if (S.edgeTarget) openMap(S.edgeTarget, { center: S.pos ? [S.pos.lat, S.pos.lon] : null }); },
     edgeClose: function () { if (S.edgeTarget) S.edgeDismissed[S.edgeTarget] = true; $('#edge-banner').classList.add('hidden'); },
-    layersSheet: function () {
-      var opts = S.layers.map(function (l) { var vis = l.visible !== false; return { label: (vis ? 'Visible : ' : 'Masqué : ') + l.name, icon: vis ? 'eye' : 'eyeoff', cls: vis ? '' : '', fn: async function () { l.visible = !vis; await NavDB.saveLayer(l); renderOverlays(); ACT.layersSheet(); } }; });
+    layersSheet: function () { displaySheet(); },
+    pointLayersSheet: function () {
+      var opts = S.layers.map(function (l) { var vis = l.visible !== false; return { label: (vis ? 'Visible : ' : 'Masqué : ') + l.name, icon: vis ? 'eye' : 'eyeoff', cls: vis ? '' : '', fn: async function () { l.visible = !vis; await NavDB.saveLayer(l); renderOverlays(); ACT.pointLayersSheet(); } }; });
       if (!opts.length) { toast('Aucun calque pour l\'instant'); return; }
       sheetOptions('Calques affichés', 'Touchez un calque pour l\'afficher ou le masquer sur toutes les cartes.', opts);
     },
@@ -1293,6 +1385,7 @@
     e.preventDefault(); fn(el, e);
   });
   document.addEventListener('change', async function (e) {
+    if (e.target.dataset && e.target.dataset.disp) { onDisp(e.target, true); return; }
     var a = e.target.dataset.actChange;
     if (a === 'layerSelect' && e.target.value !== '__new') { syncForm(); renderWpForm(); return; }
     if (a === 'layerSelect' && e.target.value === '__new') {
@@ -1303,6 +1396,7 @@
     if (a === 'fColor') { S.form.colorTouched = true; syncForm(); renderWpForm(); }
   });
   document.addEventListener('input', function (e) {
+    if (e.target.dataset && e.target.dataset.disp && e.target.type === 'range') onDisp(e.target, false);
     if (e.target.id === 'lib-search') { S.libQuery = e.target.value; renderLib(); }
     if (e.target.id === 'pts-search') { S.ptsQuery = e.target.value; renderPtsList(); }
   });
@@ -1326,9 +1420,11 @@
     try { bootMsg('Mise à jour de vos données…'); summary = await NavDB.migrate(); }
     catch (e) { bootMsg(e.message, true, true); return; }
     applyTheme((await NavDB.getMeta('theme')) || 'soleil');
+    if (NavDB.IS_TEST) { document.body.classList.add('env-test'); document.title = 'TEST — NAVenza MAP'; }
     await loadAll();
     S.deviceId = await NavDB.getMeta('deviceId'); if (!S.deviceId) { S.deviceId = newUid(); await NavDB.setMeta('deviceId', S.deviceId); }
     S.activeLayerId = (await NavDB.getMeta('activeLayerId')) || null;
+    S.fonds = (await NavDB.getMeta('fonds')) || {}; var cs = (await NavDB.getMeta('carteStyle')) || {}; S.carteOpacity = cs.op == null ? 1 : cs.op; S.carteBlend = !!cs.blend;
     S.coordFmt = (await NavDB.getMeta('coordFmt')) || 'dd'; S.employee = (await NavDB.getMeta('employee')) || ''; S.officeEmail = (await NavDB.getMeta('officeEmail')) || 'faune@terfa.ca';
     try { await ensureUids(); } catch (e) { console.warn('[app] uid :', e); }
     startGPS();
