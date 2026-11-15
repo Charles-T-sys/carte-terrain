@@ -1,11 +1,11 @@
-// sw.js — NAVenza MAP 5.6.0 (navenza-v14 / nvtest-v14)
+// sw.js — NAVenza MAP 5.6.0 (navenza-v15 / nvtest-v15) — v15 : remplace un cache v14 incomplet
 // Hors ligne d'abord : tous les fichiers de l'app sont pré-cachés à l'installation.
 // Une nouvelle version ne s'installe QUE par un nouveau CACHE_NAME : la page et ses scripts
 // viennent toujours du même lot (pas de mélange ancienne page / nouveaux scripts).
 const BASE_PATH = new URL('./', self.location).pathname;
 // Copie de test : caches « nvtest-… », jamais touchés par la production (qui efface seulement « navenza-… »)
 const PREFIX = /-test\/$/.test(BASE_PATH) ? 'nvtest-' : 'navenza-';
-const CACHE_NAME = PREFIX + 'v14';
+const CACHE_NAME = PREFIX + 'v15';
 const BASE = BASE_PATH;   // '/carte-terrain/' ou '/carte-terrain-test/' sur GitHub Pages
 const HTML = BASE + 'carte_terrain.html';
 const CORE = [
