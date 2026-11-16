@@ -299,3 +299,21 @@ body.env-test::after { content: 'VERSION TEST'; position: fixed; z-index: 3000; 
 .logo-card img { display: block; width: 100%; height: auto; }
 .logo-card.sm { max-width: 260px; padding: 8px 12px; border-radius: 14px; margin: 4px 0 10px; }
 body[data-theme="nuit"] .logo-card { filter: grayscale(1) sepia(1) hue-rotate(-40deg) saturate(3) brightness(.55); }
+
+/* 5.7.1 — bandeau de la Bibliothèque */
+.dash { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px; margin: 8px 0 6px; display: flex; flex-direction: column; gap: 8px; }
+.dash-l1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 16px; min-height: 28px; }
+.dash-l1 .mono { font-size: 13px; }
+.dash.calm .dash-l1 .ok { margin-left: auto; }
+.dash .ok { color: var(--ok); font-weight: 700; }
+.dash-r { display: flex; align-items: center; gap: 10px; justify-content: space-between; font-size: 16px; }
+.dash-r .btn { min-height: 48px; flex: none; }
+.dash-link { display: flex; align-items: center; gap: 8px; background: none; border: none; padding: 6px 0; min-height: 44px; font: inherit; font-size: 15px; color: var(--accent-text); text-align: left; cursor: pointer; }
+.dash-link.warn { color: var(--rec); font-weight: 700; }
+.dash-near { display: flex; align-items: center; gap: 10px; width: 100%; background: var(--accent-soft); border: none; border-radius: 12px; padding: 10px; min-height: 56px; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.dash-near .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dash-near .t { font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-near .s { font-size: 13px; color: var(--muted); }
+.dash-near .n { font-size: 14px; flex: none; }
+.dash-resume { width: 100%; justify-content: flex-start; min-height: 48px; gap: 8px; }
+.dash-resume span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
