@@ -283,3 +283,19 @@ body.env-test::after { content: 'VERSION TEST'; position: fixed; z-index: 3000; 
 .chk { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 8px 0 2px; cursor: pointer; }
 .chk input { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--accent); }
 .chk .s { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+/* 5.7.0 — relevé en série, accueil, logo */
+.serie-bar { border-top: 3px solid var(--accent); }
+.serie-in { display: flex; align-items: center; gap: 10px; }
+.serie-in span { font-weight: 700; font-size: 16px; flex: none; max-width: 45%; }
+.serie-in .input { flex: 1; font-size: 22px; text-align: center; min-height: 56px; }
+#accueil { position: fixed; inset: 0; z-index: 1900; background: var(--bg); color: var(--text); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#accueil .acc-in { max-width: 460px; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 22px calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; }
+#accueil h1 { margin: 8px 0 0; font-size: 28px; }
+#accueil p { margin: 0; font-size: 16px; line-height: 1.45; }
+#accueil p.s { font-size: 14px; margin-top: -6px; }
+#accueil .note { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px; font-size: 15px; line-height: 1.4; }
+.logo-card { background: #fff; border-radius: 18px; padding: 14px 18px; box-shadow: var(--shadow); }
+.logo-card img { display: block; width: 100%; height: auto; }
+.logo-card.sm { max-width: 260px; padding: 8px 12px; border-radius: 14px; margin: 4px 0 10px; }
+body[data-theme="nuit"] .logo-card { filter: grayscale(1) sepia(1) hue-rotate(-40deg) saturate(3) brightness(.55); }
