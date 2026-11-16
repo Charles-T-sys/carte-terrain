@@ -283,7 +283,7 @@
   // ══════════════ Waypoints et photos ══════════════
   function listWaypoints() { return getAll('waypoints'); }
   function saveWaypoint(wp) { return put('waypoints', wp); }
-  async function addPhoto(wpId, data) { var id = uid('ph_'); await put('photos', { id: id, wpId: wpId, data: data }); return id; }
+  async function addPhoto(wpId, data, taken) { var id = uid('ph_'); await put('photos', { id: id, wpId: wpId, data: data, taken: taken || null }); return id; }
   function deletePhoto(id) { return del('photos', id); }
   async function getPhotos(wp) {
     var out = [];

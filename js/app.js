@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.6.0';
-  var NOUVEAUTES = ['Mesure : « Terminer » propose d\'enregistrer la mesure comme ligne ou polygone (exportés)', 'Suivre un tracé : écart à gauche ou à droite, distance restante (menu d\'un tracé)', 'Nouveau point « Par cap et distance »', 'Feuille Affichage plus basse, avec boutons − / + adaptés aux gants'];
+  var APP_VERSION = '5.7.0';
+  var NOUVEAUTES = ['Relevé en série : Point → « Relevé en série », numéro automatique et une valeur par point (bathymétrie, stations)', 'Points : le site à faire le plus proche, avec distance et direction ; Affichage : masquer les sites faits', 'Photos : date et position réécrites dans les fichiers exportés', 'Nouveau logo et écran d\'accueil']; 
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -14,6 +14,7 @@
   function fmtLL(lat, lon, f) { return NVCoords.format(lat, lon, f || S.coordFmt); }
   function fmtDate(iso) { if (!iso) return '—'; try { return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)); } catch (e) { return iso; } }
   function fmtDay(iso) { if (!iso) return ''; try { return new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium' }).format(new Date(iso)); } catch (e) { return iso.slice(0, 10); } }
+  function card(b) { return ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
   function pl(n, a, b) { return n + ' ' + (n > 1 ? (b || a + 's') : a); }
   function deg(d) { return String(Math.round(d) % 360).padStart(3, '0') + '°'; }
   function rad(x) { return x * Math.PI / 180; }
@@ -63,7 +64,8 @@
     form: null, wpOpen: null, wpReturn: null, sheetFns: [], deviceId: '', ptsStat: '',
     ov: null, ovFolder: 'all', ovLayers: null, ovPos: null,
     fonds: {}, fondLayers: {}, carteOpacity: 1, carteBlend: false,
-    activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null
+    activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null,
+    serie: null, serieCfg: null, hideDone: false
   };
   function newUid() {
     try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
@@ -159,7 +161,7 @@
   }
   function closeMapView() {
     if (!$('#view-map').classList.contains('active')) return;
-    exitMire();
+    exitMire(); serieEnd();
     $('#view-map').classList.remove('active'); document.body.classList.remove('mapmode');
   }
 
@@ -382,6 +384,8 @@
     var ordre = ordreEffectif(), fonds = ordre.slice().reverse().map(function (id) { return S.cartes.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
     var nOrd = ordre.length, sc = $('#sheet').scrollTop;
     var html = '<div class="disp-top"><h3>Affichage</h3><button class="btn" data-act="pointLayersSheet">' + ic('layers') + '<span>Calques</span></button><button class="btn primary" data-act="closeSheet">Fermer</button></div>';
+    var nDone = S.wps.filter(function (w) { return w.statut === 'fait'; }).length;
+    if (nDone) html += '<div class="disp"><div class="disp-r"><button class="chip tog' + (S.hideDone ? ' on' : '') + '" data-act="hideDone" aria-pressed="' + !!S.hideDone + '">Masquer les sites faits</button><span class="muted s">' + pl(nDone, 'site fait', 'sites faits') + ' · sur la carte seulement</span></div></div>';
     if (S.carte && !isFond(S.carte)) {
       html += '<div class="disp"><div class="disp-r"><b class="nm">' + esc(S.carte.name) + '</b>' + stepper('carteOp', null, S.carteOpacity) + '</div>' +
         '<div class="disp-r"><button class="chip tog' + (S.carteBlend ? ' on' : '') + '" data-act="dispTog" data-k="carteBlend" aria-pressed="' + !!S.carteBlend + '">Blanc transparent</button><span class="muted s">Carte ouverte, toujours au-dessus des fonds</span></div></div>';
@@ -429,6 +433,7 @@
   var _hdrT = null;
   function onMapMove() {
     if (S.mire) updateMire(); else if (S.viseur) updateCoordsBar();
+    if (S.serie && S.serieCfg.src === 'mire') updateSerieBar();
     clearTimeout(_hdrT); _hdrT = setTimeout(updateMapHeader, 300);
   }
   function renderOverlays() {
@@ -443,6 +448,7 @@
     });
     S.wps.forEach(function (w) {
       if (!layerVisible(w.layerId)) return;
+      if (S.hideDone && w.statut === 'fait' && S.navTarget !== w.id) return;
       var icon = L.divIcon({ className: '', html: '<div class="wp-icon' + (S.navTarget === w.id ? ' target' : '') + (w.statut === 'fait' ? ' done' : '') + '">' + wpIcon(w, 28) + statutBadge(w) + '<div class="wp-label">' + esc(w.name) + '</div></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
       L.marker([w.lat, w.lon], { icon: icon, keyboard: false }).on('click', function () { if (S.mire) return; openWp(w.id, 'map'); }).addTo(S.wpGroup);
     });
@@ -511,12 +517,13 @@
       if (!last || hav(last, S.pos) > 1 || c.accuracy < 15) { S.tracePts.push({ lat: lat, lon: lon, t: new Date(now).toISOString() }); if (S.traceLine) S.traceLine.addLatLng([lat, lon]); }
       if (S.tracePts.length - S.traceSaved >= 10) persistTrace();
     }
-    updatePosMarker(); updateCoordsBar(); updateNav();
+    updatePosMarker(); updateCoordsBar(); updateNav(); if (S.serie) updateSerieBar();
     if (S.follow && S.map) S.map.panTo([lat, lon], { animate: true });
     if (moved) {
       S.lastHereRender = S.pos;
       if ($('#view-cartes').classList.contains('active') && !S.libQuery) renderLib();
       if ($('#view-apercu').classList.contains('active')) renderOvSheet();
+      if ($('#view-points').classList.contains('active') && S.ptsMode === 'points' && !document.activeElement.matches('input')) renderPoints();
       checkEdge(); updateMapHeader();
     }
     if (S.ov && S.ovPos) S.ovPos.setLatLng([lat, lon]);
@@ -796,7 +803,7 @@
     var files = [];
     try {
       var photos = await NavDB.getPhotos(w);
-      files = photos.map(function (p, i) { var b = atob(p.data.split(',')[1]), u = new Uint8Array(b.length); for (var k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); return new File([u], 'photo_' + (i + 1) + '.jpg', { type: 'image/jpeg' }); });
+      files = photos.map(function (p, i) { var b = atob(NVExif.inject(p.data, NVExport.photoMeta(w, p, layersById())).split(',')[1]), u = new Uint8Array(b.length); for (var k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); return new File([u], 'photo_' + (i + 1) + '.jpg', { type: 'image/jpeg' }); });
     } catch (e) { files = []; }
     var data = { title: w.name, text: text };
     if (files.length && navigator.canShare && navigator.canShare({ files: files })) data.files = files;
@@ -912,7 +919,7 @@
   async function openWpForm(wp, latlng) {
     var lid = wp ? wp.layerId : await ensureActiveLayer();
     var base = wp ? Object.assign({}, wp) : { name: 'WP-' + (S.wps.length + 1), comment: '', sym: S.lastSym || 'point', color: null, layerId: lid, lat: latlng.lat, lon: latlng.lon, gps: latlng.gps || (latlng.manual ? { src: 'coordonnees' } : null) };
-    var photos = wp ? (await NavDB.getPhotos(wp)).map(function (p) { return { id: p.id, data: p.data }; }) : [];
+    var photos = wp ? (await NavDB.getPhotos(wp)).map(function (p) { return { id: p.id, data: p.data, taken: p.taken }; }) : [];
     base.props = Object.assign({}, base.props || {});
     S.form = { origStatut: base.statut || '', edit: !!wp, wp: base, photos: photos, removed: [], coordFmt: S.coordFmt, showCoords: !!(latlng && latlng.manual) };
     $('#wpf-title').textContent = wp ? 'Modifier le point' : 'Nouveau point';
@@ -1003,7 +1010,7 @@
     if (w.sym) S.lastSym = w.sym;
     for (var i = 0; i < f.removed.length; i++) await NavDB.deletePhoto(f.removed[i]);
     var ids = [];
-    for (var j = 0; j < f.photos.length; j++) { var p = f.photos[j]; ids.push(p.id || await NavDB.addPhoto(w.id, p.data)); }
+    for (var j = 0; j < f.photos.length; j++) { var p = f.photos[j]; ids.push(p.id || await NavDB.addPhoto(w.id, p.data, p.taken)); }
     w.photoIds = ids;
     delete w.photos;
     await NavDB.saveWaypoint(w);
@@ -1015,7 +1022,13 @@
     if (f.edit && S.wpOpen === w.id) openWp(w.id);
     else if ($('#view-points').classList.contains('active')) renderPoints();
   }
-  function resizePhoto(file) {
+  function resizePhoto(file) { // → { data, taken } : photo réduite + date de prise de vue (EXIF, sinon date du fichier)
+    var taken = (file.arrayBuffer ? file.arrayBuffer() : Promise.reject()).then(function (b) { return NVExif.readDate(b); }).catch(function () { return null; });
+    return Promise.all([taken, resizeOnly(file)]).then(function (r) {
+      return r[1] ? { data: r[1], taken: r[0] || new Date(file.lastModified || Date.now()).toISOString() } : null;
+    });
+  }
+  function resizeOnly(file) {
     return new Promise(function (res) {
       var r = new FileReader();
       r.onload = function (ev) {
@@ -1033,6 +1046,108 @@
     });
   }
 
+  // ══════════════ Relevé en série ══════════════
+  function serieName(n) { var c = S.serieCfg; return (c.prefix || '') + String(n).padStart(3, '0'); }
+  function serieMax(prefix) { // plus grand numéro déjà utilisé avec ce préfixe
+    var m = 0, re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\d+)$');
+    S.wps.forEach(function (w) { var r = re.exec(w.name || ''); if (r) m = Math.max(m, +r[1]); });
+    return m;
+  }
+  function serieFields(lay) { return ((lay && lay.fields) || []).filter(function (f) { return f.type === 'nombre' || f.type === 'texte'; }); }
+  function serieSync() {
+    var c = S.serieCfg, g = function (id) { var e = document.getElementById(id); return e ? e.value : null; };
+    if (g('se-layer') != null) c.layerId = g('se-layer');
+    if (g('se-sym') != null) c.sym = g('se-sym');
+    if (g('se-prefix') != null) c.prefix = g('se-prefix').trim();
+    if (g('se-next') != null) c.next = Math.max(1, parseInt(g('se-next'), 10) || 1);
+    if (g('se-field') != null) c.field = g('se-field');
+    if (g('se-newfield') != null) c.newField = g('se-newfield').trim();
+  }
+  async function serieSheet() {
+    var lid = await ensureActiveLayer(), saved = (await NavDB.getMeta('serie')) || {};
+    var c = S.serieCfg = Object.assign({ prefix: 'P-', sym: 'point', field: '', src: 'gps' }, saved, { layerId: layerById(saved.layerId) ? saved.layerId : lid, newField: '' });
+    c.next = Math.max(saved.prefix === c.prefix && saved.next ? saved.next : 1, serieMax(c.prefix) + 1);
+    renderSerieSheet();
+  }
+  function renderSerieSheet() {
+    var c = S.serieCfg, lay = layerById(c.layerId), fs = serieFields(lay);
+    if (c.field && c.field !== '__new' && !fs.some(function (f) { return f.key === c.field; })) c.field = '';
+    var html = '<h3>Relevé en série</h3><p class="muted" style="margin:0 2px 10px;font-size:14px;line-height:1.4">Des points rapides, l\'un après l\'autre : même calque et même pictogramme, nom numéroté tout seul, une seule valeur à taper.</p>' +
+      '<label class="field"><span>Calque</span><select class="input" id="se-layer" data-act-change="serieRefresh">' + S.layers.map(function (l) { return '<option value="' + esc(l.id) + '"' + (l.id === c.layerId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="field"><span>Pictogramme</span><select class="input" id="se-sym">' + NVSym.LIST.map(function (x) { return '<option value="' + x.id + '"' + (x.id === c.sym ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') + '</select></label>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="field"><span>Préfixe du nom</span><input class="input" id="se-prefix" maxlength="20" value="' + esc(c.prefix) + '" autocomplete="off"></label>' +
+      '<label class="field"><span>Prochain numéro</span><input class="input" id="se-next" inputmode="numeric" value="' + c.next + '"></label></div>' +
+      '<label class="field"><span>Valeur à taper pour chaque point</span><select class="input" id="se-field" data-act-change="serieRefresh"><option value="">Aucune</option>' + fs.map(function (f) { return '<option value="' + esc(f.key) + '"' + (f.key === c.field ? ' selected' : '') + '>' + esc(f.label) + (f.type === 'nombre' ? ' (nombre)' : '') + '</option>'; }).join('') + '<option value="__new"' + (c.field === '__new' ? ' selected' : '') + '>+ Nouveau champ numérique…</option></select></label>' +
+      (c.field === '__new' ? '<label class="field"><span>Nom du nouveau champ</span><input class="input" id="se-newfield" maxlength="40" placeholder="ex. Profondeur (m)" value="' + esc(c.newField || '') + '"></label>' : '') +
+      '<div class="field"><span>Position de chaque point</span><div class="seg"><button class="' + (c.src === 'gps' ? 'on' : '') + '" data-act="serieSrc" data-id="gps">Ma position GPS</button><button class="' + (c.src === 'mire' ? 'on' : '') + '" data-act="serieSrc" data-id="mire">Centre de la carte</button></div></div>' +
+      '<div class="grid2" style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:6px"><button class="btn" data-act="closeSheet">Annuler</button><button class="btn primary" data-act="serieStart">' + ic('check', 'sm') + 'Commencer</button></div>';
+    openSheet(html);
+  }
+  async function serieStart() {
+    serieSync(); var c = S.serieCfg, lay = layerById(c.layerId);
+    if (!lay) { toast('Choisissez un calque'); return; }
+    if (c.field === '__new') {
+      if (!c.newField) { toast('Donnez un nom au nouveau champ'); return; }
+      var key = NVImport.slugKey(c.newField), k = 2; while ((lay.fields || []).some(function (f) { return f.key === key; })) key = NVImport.slugKey(c.newField) + '_' + (k++);
+      lay.fields = (lay.fields || []).concat([{ key: key, label: c.newField, type: 'nombre', choices: [] }]); await NavDB.saveLayer(lay); c.field = key;
+    }
+    delete c.newField;
+    await NavDB.setMeta('serie', c);
+    closeSheet(); exitMire();
+    S.serie = { n: 0, ids: [] };
+    var fd = serieField();
+    $('#serie-val').innerHTML = fd ? '<label class="serie-in"><span>' + esc(fd.label) + '</span><input class="input" id="serie-input" autocomplete="off" enterkeyhint="done"' + (fd.type === 'nombre' ? ' inputmode="decimal"' : '') + '></label>' : '';
+    $('#serie-bar').classList.remove('hidden'); $('#map-bottom').classList.add('hidden'); syncMire();
+    updateSerieBar();
+    toast('Série « ' + (c.prefix || 'sans préfixe') + ' » : ' + (c.src === 'gps' ? 'chaque point prend votre position GPS' : 'chaque point se place au centre de la carte'), 3500);
+  }
+  function serieField() { var c = S.serieCfg, lay = c && layerById(c.layerId); return c && c.field ? (lay && lay.fields || []).find(function (f) { return f.key === c.field; }) : null; }
+  function updateSerieBar() {
+    if (!S.serie) return;
+    var c = S.serieCfg, info;
+    if (c.src === 'mire') { var m = ll(S.map.getCenter()); info = fmtLL(m.lat, m.lon); }
+    else info = S.pos ? 'GPS ±' + Math.round(S.acc) + ' m' : 'Position GPS en attente…';
+    $('#serie-info').textContent = info + ' · ' + (S.serie.n ? pl(S.serie.n, 'point enregistré', 'points enregistrés') : 'aucun point encore');
+    var b = $('#serie-save'); b.innerHTML = ic('check', 'sm') + esc(serieName(c.next)); b.disabled = c.src === 'gps' && !S.pos;
+    $('#serie-undo').disabled = !S.serie.ids.length;
+  }
+  async function serieSave() {
+    if (!S.serie) return;
+    var c = S.serieCfg, lay = layerById(c.layerId), fd = serieField(), inp = $('#serie-input'), props = {}, raw = '';
+    if (!lay) { toast('Calque introuvable'); return; }
+    var pos;
+    if (c.src === 'mire') { var m = ll(S.map.getCenter()); pos = { lat: m.lat, lon: m.lon, gps: { src: 'mire' } }; }
+    else { if (!S.pos) { toast('Position GPS en attente'); return; } pos = { lat: S.pos.lat, lon: S.pos.lon, gps: { src: 'gps', acc: S.acc, alt: S.alt, altAcc: S.altAcc } }; }
+    if (fd) {
+      raw = (inp && inp.value || '').trim();
+      if (!raw) { toast('Entrez « ' + fd.label + ' »'); if (inp) inp.focus(); return; }
+      if (fd.type === 'nombre') { var v = pnum(raw); if (isNaN(v)) { toast('« ' + fd.label + ' » : un nombre est attendu'); if (inp) inp.focus(); return; } props[fd.key] = v; }
+      else props[fd.key] = raw;
+    }
+    var now = new Date().toISOString();
+    var w = stamp({ id: Date.now(), timestamp: now, name: serieName(c.next), comment: '', sym: c.sym, color: null, layerId: lay.id, lat: pos.lat, lon: pos.lon, gps: pos.gps, props: props, photoIds: [] }, true);
+    await NavDB.saveWaypoint(w); S.wps.push(w); S.serie.ids.push(w.id); S.serie.n++; c.next++;
+    NavDB.setMeta('serie', c);
+    renderOverlays();
+    try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+    toast('« ' + w.name + ' » enregistré' + (fd ? ' — ' + raw : '') + (pos.gps.acc != null ? ' (±' + Math.round(pos.gps.acc) + ' m)' : ''), 2200);
+    if (inp) { inp.value = ''; inp.focus(); }
+    updateSerieBar();
+  }
+  async function serieUndo() {
+    if (!S.serie || !S.serie.ids.length) return;
+    var id = S.serie.ids.pop(), w = wpById(id); if (!w) return;
+    await NavDB.deleteWaypoint(w); S.wps = S.wps.filter(function (x) { return x.id !== id; });
+    S.serie.n--; S.serieCfg.next--; NavDB.setMeta('serie', S.serieCfg);
+    renderOverlays(); toast('« ' + w.name + ' » retiré'); updateSerieBar();
+  }
+  function serieEnd(silent) {
+    if (!S.serie) return;
+    var n = S.serie.n; S.serie = null;
+    $('#serie-bar').classList.add('hidden'); $('#map-bottom').classList.remove('hidden'); syncMire(); updateCoordsBar();
+    if (!silent) toast(n ? 'Série terminée : ' + pl(n, 'point') + ' — à envoyer au bureau' : 'Série terminée');
+  }
+
   // ══════════════ Points et tracés ══════════════
   function unsent() {
     return { wps: S.wps.filter(function (w) { return !w.sentAt && (!w.imported || w.modified); }),
@@ -1041,6 +1156,14 @@
   function renderPoints() {
     var u = unsent(), html = '';
     html += '<button class="btn primary big" style="margin-top:6px" data-act="sendOffice">' + ic('share') + '<span>Envoyer au bureau' + (u.wps.length + u.trs.length ? '<span style="display:block;font-size:14px;font-weight:400">' + pl(u.wps.length, 'nouveau point', 'nouveaux points') + ' · ' + pl(u.trs.length, 'tracé') + '</span>' : '<span style="display:block;font-size:14px;font-weight:400">Tout a été envoyé</span>') + '</span></button>';
+    var todo = S.wps.filter(function (w) { return w.statut === 'a_faire' && layerVisible(w.layerId); });
+    if (todo.length) {
+      if (S.pos) {
+        var nw = todo.slice().sort(function (a, b) { return hav(S.pos, a) - hav(S.pos, b); })[0];
+        html += '<div class="section-h"><h2>À faire près de vous</h2><button class="btn" style="min-height:44px" data-act="ptsStat" data-id="a_faire">Les ' + todo.length + ' sites</button></div>' +
+          '<div class="list"><button class="row" data-act="nearNav" data-id="' + nw.id + '">' + wpIcon(nw, 30) + '<span class="main"><span class="t">' + esc(nw.name) + '</span><span class="s">Le plus proche · ' + esc((layerById(nw.layerId) || {}).name || '') + '</span></span><span class="n">' + fmtDist(hav(S.pos, nw)) + ' ' + card(bearing(S.pos, nw)) + '</span>' + ic('nav', 'sm') + '</button></div>';
+      } else html += '<p class="muted" style="margin:12px 2px 0;font-size:14px">' + pl(todo.length, 'site à faire', 'sites à faire') + ' · le plus proche s\'affichera dès que le GPS aura votre position.</p>';
+    }
     html += '<div class="section-h"><h2>Calques</h2><span style="display:flex;gap:8px"><button class="btn" style="min-height:44px" data-act="importLayer">' + ic('download', 'sm') + 'Importer</button><button class="btn" style="min-height:44px" data-act="newLayer">' + ic('plus', 'sm') + 'Nouveau</button></span></div>';
     if (!S.layers.length) html += '<div class="empty" style="padding:14px">Aucun calque. Il sera créé avec votre premier point, ou importez celui que le bureau vous a envoyé (GeoJSON, KML, GPX).</div>';
     else {
@@ -1082,7 +1205,7 @@
     box.innerHTML = shown.length ? '<div class="list">' + shown.map(function (w) {
       var l = layerById(w.layerId), sym = NVSym.BY[NVSym.idOf(w)];
       return '<button class="row" data-act="openWp" data-id="' + w.id + '">' + wpIcon(w, 30) + '<span class="main"><span class="t">' + esc(w.name) + '</span><span class="s">' + (w.statut ? esc(STATUT_LBL[w.statut]) + ' · ' : '') + esc(sym.short) + (l ? ' · ' + esc(l.name) : '') + ((w.photoIds || []).length ? ' · ' + pl(w.photoIds.length, 'photo') : '') + (!w.sentAt && (!w.imported || w.modified) ? ' · à envoyer' : '') + '</span></span>' +
-        (S.pos ? '<span class="n">' + fmtDist(hav(S.pos, w)) + '</span>' : '') + ic('chev', 'sm muted') + '</button>';
+        (S.pos ? '<span class="n">' + fmtDist(hav(S.pos, w)) + ' ' + card(bearing(S.pos, w)) + '</span>' : '') + ic('chev', 'sm muted') + '</button>';
     }).join('') + '</div>' + (ws.length > 300 ? '<p class="muted">' + (ws.length - 300) + ' autres points : affinez la recherche.</p>' : '') :
       '<div class="empty">' + (S.wps.length ? 'Aucun point ne correspond.' : 'Aucun point. Ajoutez-en un avec le bouton <b>Point</b> sur la carte.') + '</div>';
   }
@@ -1243,7 +1366,7 @@
     $('#m-viseur').classList.toggle('on', S.viseur);
     syncMire(); updateCoordsBar();
   }
-  function syncMire() { $('#mire').classList.toggle('hidden', !(S.viseur || S.mire)); }
+  function syncMire() { $('#mire').classList.toggle('hidden', !(S.viseur || S.mire || (S.serie && S.serieCfg.src === 'mire'))); }
   function viseurInfo() {
     var c = ll(S.map.getCenter()), t = 'Viseur · ' + fmtLL(c.lat, c.lon);
     var sub = S.pos ? 'à ' + fmtDist(hav(S.pos, c)) + ' · cap ' + deg(bearing(S.pos, c)) + ' de vous' : 'position GPS en attente';
@@ -1363,7 +1486,7 @@
       var zip = new JSZip(), ph = zip.folder('photos'), nPh = 0;
       for (var i = 0; i < S.wps.length; i++) {
         var photos = await NavDB.getPhotos(S.wps[i]);
-        photos.forEach(function (p) { ph.file(String(p.id).replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg', dataUrlBytes(p.data), { binary: true }); nPh++; });
+        var wq = S.wps[i]; photos.forEach(function (p) { ph.file(String(p.id).replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg', dataUrlBytes(NVExif.inject(p.data, NVExport.photoMeta(wq, p, layersById()))), { binary: true }); nPh++; });
       }
       var data = { format: 'navenza-sauvegarde', version: 1, app: APP_VERSION, date: new Date().toISOString(), employee: S.employee, device: S.deviceId,
         folders: S.folders, layers: S.layers, waypoints: S.wps, traces: S.traces,
@@ -1401,7 +1524,7 @@
         w.photoIds = [];
         for (var k = 0; k < oldPh.length; k++) {
           var pf = zip.file('photos/' + String(oldPh[k]).replace(/[^a-zA-Z0-9_-]/g, '_') + '.jpg');
-          if (pf) { w.photoIds.push(await NavDB.addPhoto(w.id, 'data:image/jpeg;base64,' + await pf.async('base64'))); add.p++; }
+          if (pf) { var pab = await pf.async('arraybuffer'); w.photoIds.push(await NavDB.addPhoto(w.id, 'data:image/jpeg;base64,' + await pf.async('base64'), NVExif.readDate(pab))); add.p++; }
         }
         await NavDB.saveWaypoint(w); add.w++;
       }
@@ -1414,7 +1537,7 @@
   }
 
   // ══════════════ Réglages ══════════════
-  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
+  var OFFLINE_FILES = ['carte_terrain.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js', 'js/exif.js',
     'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
     'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2', 'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2'];
   var offlineState = { ok: false, msg: 'Vérification…' };
@@ -1432,7 +1555,7 @@
   async function renderSettings() {
     var est = await NavDB.storageEstimate(), mig = await NavDB.getMeta('migrationV3'), persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) {}
-    var html = '<div class="verline"><b>NAVenza MAP ' + APP_VERSION + '</b><span>' + esc(offlineState.msg) + '</span></div>' + '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['soleil', 'Clair'], ['sombre', 'Sombre'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var html = '<div class="logo-card sm"><img src="icons/logo-nom.png" alt="NAVenza MAP"></div><div class="verline"><b>NAVenza MAP ' + APP_VERSION + '</b><span>' + esc(offlineState.msg) + '</span></div>' + '<div class="section-h"><h2>Affichage</h2></div><div class="seg">' + [['soleil', 'Clair'], ['sombre', 'Sombre'], ['nuit', 'Nuit (rouge)']].map(function (t) { return '<button class="' + (S.theme === t[0] ? 'on' : '') + '" data-act="setTheme" data-id="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>';
     html += '<div class="section-h"><h2>Format des coordonnées</h2></div><div class="chips" style="flex-wrap:wrap">' + NVCoords.FORMATS.map(function (x) { return '<button class="chip' + (S.coordFmt === x[0] ? ' on' : '') + '" data-act="setFmt" data-id="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       '<p class="muted" style="font-size:14px;line-height:1.4;margin:4px 2px">Exemple : ' + esc(fmtLL(48.20714, -68.51233)) + '. Sur la carte, touchez la ligne des coordonnées pour changer de format.</p>';
     html += '<div class="section-h"><h2>Envoi au bureau</h2></div><div class="list">' +
@@ -1527,11 +1650,17 @@
       opts.push({ label: 'Position moyennée', sub: 'Rester immobile 30 à 120 s pour une position plus sûre', icon: 'locate', disabled: !S.pos, fn: startAvg });
       opts.push({ label: 'Par cap et distance', sub: 'Un site vu de loin, depuis votre position ou le centre de la carte', icon: 'nav', fn: projSheet });
       if (!S.viseur) opts.push({ label: 'Avec la mire', sub: 'Viser un endroit au centre de l\'écran', icon: 'move', fn: function () { enterMire('wp'); } });
+      opts.push({ label: 'Relevé en série', sub: 'Points rapides numérotés, une valeur par point (bathymétrie, stations)', icon: 'route', fn: serieSheet });
       opts.push({ label: 'Coller des coordonnées', sub: 'Reçues par texto ou courriel', icon: 'edit', fn: pasteSheet });
       opts.push({ label: 'Entrer des coordonnées', icon: 'edit', fn: function () { var c = ll(S.map.getCenter()); openWpForm(null, { lat: c.lat, lon: c.lon, manual: true }); } });
       sheetOptions('Nouveau point', null, opts);
     },
     viseur: function () { toggleViseur(); },
+    serieStart: serieStart, serieSave: serieSave, serieUndo: serieUndo, serieEnd: function () { serieEnd(); },
+    serieSrc: function (el) { serieSync(); S.serieCfg.src = el.dataset.id; renderSerieSheet(); },
+    hideDone: function () { S.hideDone = !S.hideDone; NavDB.setMeta('hideDone', S.hideDone); renderOverlays(); displaySheet(); },
+    nearNav: function (el) { S.wpOpen = +el.dataset.id; ACT.wpNav(); },
+    accueilOk: accueilOk, accueilPlusTard: function () { NavDB.setMeta('accueilVu', true); $('#accueil').classList.add('hidden'); },
     cycleFmt: function () { var i = NVCoords.FORMATS.findIndex(function (x) { return x[0] === S.coordFmt; }), n = NVCoords.FORMATS[(i + 1) % NVCoords.FORMATS.length]; S.coordFmt = n[0]; NavDB.setMeta('coordFmt', n[0]); updateCoordsBar(); if (S.mire) updateMire(); toast('Coordonnées : ' + n[1]); },
     pasteOk: function () { var r = S._paste; closeSheet(); if (!r) return; if (S.map && $('#view-map').classList.contains('active')) S.map.setView([r.lat, r.lon], Math.max(S.map.getZoom(), 15)); openWpForm(null, { lat: r.lat, lon: r.lon, gps: { src: 'coordonnees' } }); },
     importLayer: function () { $('#file-layer').click(); },
@@ -1620,7 +1749,9 @@
       renderWpForm();
     }
     if (a === 'fColor') { S.form.colorTouched = true; syncForm(); renderWpForm(); }
+    if (a === 'serieRefresh') { serieSync(); renderSerieSheet(); }
   });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'serie-input') { e.preventDefault(); serieSave(); } });
   document.addEventListener('input', function (e) {
     if (e.target.dataset && e.target.dataset.disp && e.target.type === 'range') onDisp(e.target, false);
     if (e.target.id === 'lib-search') { S.libQuery = e.target.value; renderLib(); }
@@ -1631,7 +1762,7 @@
   $('#file-layer').addEventListener('change', function (e) { var f = (e.target.files || [])[0]; e.target.value = ''; if (f) importLayerFile(f); });
   $('#file-photo').addEventListener('change', async function (e) {
     var files = Array.from(e.target.files || []); e.target.value = '';
-    for (var i = 0; i < files.length; i++) { var d = await resizePhoto(files[i]); if (d && S.form) S.form.photos.push({ data: d }); }
+    for (var i = 0; i < files.length; i++) { var d = await resizePhoto(files[i]); if (d && S.form) S.form.photos.push({ data: d.data, taken: d.taken }); }
     if (S.form) renderWpForm();
   });
 
@@ -1648,6 +1779,24 @@
     await NavDB.setMeta('backupNagAt', new Date().toISOString());
     sheetOptions('Sauvegarde recommandée', (lb ? 'Dernière sauvegarde complète il y a ' + pl(Math.floor(days), 'jour') + '. ' : 'Aucune sauvegarde complète encore. ') + pl(n, 'point ou tracé', 'points ou tracés') + ' ne sont dans aucune sauvegarde : si l\'app est supprimée du téléphone, ils sont perdus.',
       [{ label: 'Faire la sauvegarde maintenant', cls: 'primary', icon: 'download', fn: backupFull }, { label: 'Plus tard', fn: function () {} }], true);
+  }
+
+  // ── Écran d'accueil (première ouverture, tant que le nom n'est pas entré) ──
+  function standalone() { try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } }
+  function showAccueil() {
+    $('#acc-nom').value = S.employee || ''; $('#acc-mail').value = S.officeEmail;
+    var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    $('#acc-install').innerHTML = standalone() ? '' : '<div class="note">' + ic('download', 'sm') + '<span><b>Installez l\'app pour le terrain.</b> ' + (ios ? 'Dans Safari : bouton Partager, puis « Sur l\'écran d\'accueil ».' : 'Dans Chrome : menu ⋮, puis « Installer l\'application » ou « Ajouter à l\'écran d\'accueil ».') + ' Ouvrez-la ensuite par sa nouvelle icône.</span></div>';
+    $('#accueil').classList.remove('hidden');
+  }
+  async function accueilOk() {
+    var n = $('#acc-nom').value.trim(), m = $('#acc-mail').value.trim();
+    if (!n) { toast('Entrez votre nom, ou touchez « Plus tard »'); $('#acc-nom').focus(); return; }
+    S.employee = n; await NavDB.setMeta('employee', n);
+    if (/.+@.+\..+/.test(m)) { S.officeEmail = m; await NavDB.setMeta('officeEmail', m); }
+    await NavDB.setMeta('accueilVu', true);
+    $('#accueil').classList.add('hidden'); toast('Bienvenue, ' + n);
+    if ($('#view-reglages').classList.contains('active')) renderSettings();
   }
 
   // ══════════════ Démarrage ══════════════
@@ -1676,7 +1825,9 @@
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     window.addEventListener('online', checkOffline); window.addEventListener('offline', checkOffline);
     setTimeout(checkOffline, 800);
+    S.hideDone = !!(await NavDB.getMeta('hideDone'));
     $('#boot').classList.add('hidden');
+    if (!S.employee && !(await NavDB.getMeta('accueilVu'))) showAccueil();
     var lastView = await NavDB.getMeta('lastView'), lastCarte = await NavDB.getMeta('lastCarteId');
     if (lastView === 'map' && lastCarte && carteById(lastCarte)) openMap(lastCarte); else showTab(lastView === 'points' || lastView === 'apercu' ? lastView : 'cartes');
     if (summary) sheetOptions('Vos données sont à jour', pl(summary.dossiers, 'dossier') + ', ' + pl(summary.cartes, 'carte') + ', ' + pl(summary.calques, 'calque') + ', ' + pl(summary.points, 'point') + ' (' + pl(summary.photos, 'photo') + ') et ' + pl(summary.traces, 'tracé') + ' ont été convertis. Chaque ancien projet est devenu un dossier et un calque du même nom.', [{ label: 'Compris', cls: 'primary', icon: 'check', fn: function () {} }], true);

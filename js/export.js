@@ -60,6 +60,12 @@
     return [{ blob: new Blob([s], { type: 'application/gpx+xml' }), name: 'navenza_' + slug(label) + '_' + today() + '.gpx' }];
   }
 
+  // Métadonnées réécrites dans chaque photo exportée : date de prise de vue, position du point, nom
+  function photoMeta(w, p, byId) {
+    var g = w.gps || {}, ln = byId ? layerName(byId, w.layerId) : '';
+    return { lat: w.lat, lon: w.lon, alt: g.alt != null ? g.alt : null, date: (p && p.taken) || w.timestamp,
+      desc: (w.name || '') + (ln ? ' - ' + ln : '') + (w.uid ? ' [' + (w.extId ? 'site:' + w.extId : w.uid) + ']' : ''), software: 'NAVenza MAP' };
+  }
   // ── KMZ (photos intégrées, découpage au-delà de 15 Mo) ──
   function compressDataUrl(dataUrl, quality) {
     return new Promise(function (res) {
@@ -79,6 +85,7 @@
       var w = wps[i], photos = await getPhotos(w), prs = [];
       for (var j = 0; j < photos.length; j++) {
         var c = await compressDataUrl(photos[j].data, quality);
+        if (window.NVExif) c = NVExif.inject(c, photoMeta(w, photos[j], byId));
         var pn = fileId(w) + '_' + (j + 1) + '.jpg'; allPhotos.push({ name: pn, dataUrl: c }); prs.push('photos/' + pn);
       }
       var desc = ['<b>' + escapeXml(symLabel(w)) + '</b>' + (w.statut ? ' — ' + escapeXml({ a_faire: 'À faire', fait: 'Fait', probleme: 'Problème' }[w.statut] || w.statut) : '')]; if (w.comment) desc.push(escapeXml(w.comment));
@@ -199,5 +206,5 @@
     return [{ blob: await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' }), name: 'navenza_shp_' + slug(label) + '_' + today() + '.zip' }];
   }
 
-  window.NVExport = { geojson: geojson, gpx: gpx, kmz: kmz, shapefile: shapefile, traceKm: traceKm, escapeXml: escapeXml };
+  window.NVExport = { geojson: geojson, gpx: gpx, kmz: kmz, shapefile: shapefile, traceKm: traceKm, escapeXml: escapeXml, photoMeta: photoMeta };
 })();
