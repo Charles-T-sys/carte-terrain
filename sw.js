@@ -1,22 +1,22 @@
-// sw.js — NAVenza MAP 5.6.0 (navenza-v16 / nvtest-v16) — v16 : remplace les caches v14 et v15 incomplets
+// sw.js — NAVenza MAP 5.7.0 (navenza-v17 / nvtest-v17)
 // Hors ligne d'abord : tous les fichiers de l'app sont pré-cachés à l'installation.
 // Une nouvelle version ne s'installe QUE par un nouveau CACHE_NAME : la page et ses scripts
 // viennent toujours du même lot (pas de mélange ancienne page / nouveaux scripts).
 const BASE_PATH = new URL('./', self.location).pathname;
 // Copie de test : caches « nvtest-… », jamais touchés par la production (qui efface seulement « navenza-… »)
 const PREFIX = /-test\/$/.test(BASE_PATH) ? 'nvtest-' : 'navenza-';
-const CACHE_NAME = PREFIX + 'v16';
+const CACHE_NAME = PREFIX + 'v17';
 const BASE = BASE_PATH;   // '/carte-terrain/' ou '/carte-terrain-test/' sur GitHub Pages
 const HTML = BASE + 'carte_terrain.html';
 const CORE = [
   'carte_terrain.html', 'manifest.json',
   'css/styles.css',
-  'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js',
+  'js/app.js', 'js/db.js', 'js/layers.js', 'js/pmtiles.js', 'js/export.js', 'js/index-geojson.js', 'js/coords.js', 'js/symbols.js', 'js/importer.js', 'js/exif.js',
   'lib/leaflet.min.js', 'lib/leaflet.min.css', 'lib/jszip.min.js', 'lib/utif.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
   'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2',
   'fonts/ibm-plex-mono-latin-500-normal.woff2', 'fonts/ibm-plex-mono-latin-600-normal.woff2',
 ].map(f => BASE + f);
-const OPTIONAL = ['icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'].map(f => BASE + f);
+const OPTIONAL = ['icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/logo-nom.png'].map(f => BASE + f);
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
