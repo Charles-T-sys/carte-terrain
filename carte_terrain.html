@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet.min.css">
 <link rel="stylesheet" href="css/styles.css">
-<script>window.NV_HTML_VERSION = '5.6.0';
+<script>window.NV_HTML_VERSION = '5.7.0';
 // Filet de sécurité : si un fichier de l'app manque (mise à jour interrompue hors réseau), le dire clairement.
 setTimeout(function () {
   if (window.__NV) return;
@@ -32,6 +32,7 @@ setTimeout(function () {
 <script src="js/symbols.js"></script>
 <script src="js/importer.js"></script>
 <script src="js/db.js"></script>
+<script src="js/exif.js"></script>
 <script src="js/export.js"></script>
 </head>
 <body data-theme="soleil">
@@ -148,6 +149,11 @@ setTimeout(function () {
         <button class="act" data-act="measure" id="m-measure"><svg class="i"><use href="#i-ruler"/></svg>Mesure</button>
       </div>
     </div>
+    <div class="mire-bar serie-bar hidden" id="serie-bar">
+      <div class="info" id="serie-info">—</div>
+      <div id="serie-val"></div>
+      <div class="row2"><button class="btn" data-act="serieUndo" id="serie-undo" aria-label="Retirer le dernier point"><svg class="i sm"><use href="#i-undo"/></svg>Annuler</button><button class="btn" data-act="serieEnd">Terminer</button><button class="btn primary" data-act="serieSave" id="serie-save">Enregistrer</button></div>
+    </div>
     <div class="mire-bar hidden" id="mire-bar">
       <div class="info" id="mire-info">—</div>
       <div class="row2" id="mire-btns"></div>
@@ -193,6 +199,20 @@ setTimeout(function () {
 <div id="sheet-bg" data-act="closeSheet"></div>
 <div id="sheet" role="dialog" aria-modal="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+
+<div id="accueil" class="hidden" role="dialog" aria-modal="true" aria-labelledby="acc-t">
+  <div class="acc-in">
+    <div class="logo-card"><img src="icons/logo-nom.png" alt="NAVenza MAP"></div>
+    <h1 id="acc-t">Bienvenue</h1>
+    <p>Cartes de terrain hors réseau pour la Réserve faunique Duchénier. Deux renseignements pour commencer ; vous pourrez les changer dans les Réglages.</p>
+    <label class="field"><span>Votre nom</span><input class="input" id="acc-nom" autocomplete="name" maxlength="60" placeholder="ex. Julia Tremblay"></label>
+    <p class="muted s">Il accompagne vos points et vos envois : le bureau sait qui a relevé quoi.</p>
+    <label class="field"><span>Courriel du bureau</span><input class="input" id="acc-mail" type="email" inputmode="email" autocomplete="off"></label>
+    <div id="acc-install"></div>
+    <button class="btn primary big" data-act="accueilOk">Commencer</button>
+    <button class="btn" data-act="accueilPlusTard">Plus tard</button>
+  </div>
+</div>
 
 <div id="boot">
   <img src="icons/icon-180.png" alt="">
