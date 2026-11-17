@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.7.0';
-  var NOUVEAUTES = ['Relevé en série : Point → « Relevé en série », numéro automatique et une valeur par point (bathymétrie, stations)', 'Points : le site à faire le plus proche, avec distance et direction ; Affichage : masquer les sites faits', 'Photos : date et position réécrites dans les fichiers exportés', 'Nouveau logo et écran d\'accueil']; 
+  var APP_VERSION = '5.7.2';
+  var NOUVEAUTES = ['Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -65,7 +65,7 @@
     ov: null, ovFolder: 'all', ovLayers: null, ovPos: null,
     fonds: {}, fondLayers: {}, carteOpacity: 1, carteBlend: false,
     activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null,
-    serie: null, serieCfg: null, hideDone: false
+    serie: null, serieCfg: null, hideDone: false, lastCarteId: null, lastBackup: null, meteo: null, meteoOn: true
   };
   function newUid() {
     try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
@@ -161,6 +161,7 @@
   }
   function closeMapView() {
     if (!$('#view-map').classList.contains('active')) return;
+    gardeRetire();
     exitMire(); serieEnd();
     $('#view-map').classList.remove('active'); document.body.classList.remove('mapmode');
   }
@@ -177,6 +178,93 @@
       '<span class="main"><span class="t">' + esc(c.name) + '</span><span class="s">' + esc(sub) + '</span></span>' + (here ? '<span class="badge">ici</span>' : '') + '</button>' +
       '<button class="more" data-act="carteMenu" data-id="' + esc(c.id) + '" aria-label="Actions pour ' + esc(c.name) + '">' + ic('more') + '</button></div>';
   }
+
+  // ══════════════ Météo (Open-Meteo, modèle GEM du Service météorologique du Canada) ══════════════
+  // Point fixe : centre de la Réserve faunique Duchénier (aucune position d'employé n'est transmise)
+  var METEO_PT = { lat: 48.1428, lon: -68.6286 };
+  var METEO_URL = 'https://api.open-meteo.com/v1/forecast?latitude=' + METEO_PT.lat + '&longitude=' + METEO_PT.lon +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant' +
+    '&timezone=America%2FToronto&forecast_days=2&models=gem_seamless';
+  function wmoTxt(c) {
+    if (c == null) return '';
+    if (c === 0) return 'Ensoleillé'; if (c <= 2) return 'Éclaircies'; if (c === 3) return 'Nuageux'; if (c === 45 || c === 48) return 'Brouillard';
+    if (c >= 51 && c <= 57) return 'Bruine'; if (c >= 61 && c <= 67) return 'Pluie'; if (c >= 71 && c <= 77) return 'Neige';
+    if (c >= 80 && c <= 82) return 'Averses'; if (c === 85 || c === 86) return 'Averses de neige'; if (c >= 95) return 'Orages'; return '';
+  }
+  function localDay(off) { var d = new Date(Date.now() + (off || 0) * 864e5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function meteoDay(off) { // { jour, … } pour aujourd'hui (0) ou demain (1), ou null
+    var m = S.meteo; if (!m || !m.daily) return null;
+    var k = m.daily.time.indexOf(localDay(off)); if (k < 0) return null;
+    var g = function (n) { var a = m.daily[n]; return a ? a[k] : null; };
+    return { code: g('weather_code'), tmax: g('temperature_2m_max'), tmin: g('temperature_2m_min'), pluie: g('precipitation_sum'), prob: g('precipitation_probability_max'),
+      vent: g('wind_speed_10m_max'), rafales: g('wind_gusts_10m_max'), dir: g('wind_direction_10m_dominant') };
+  }
+  function r0(x) { return x == null ? '–' : String(Math.round(x)); }
+  function meteoLine(d) {
+    var pl_ = d.pluie != null && d.pluie >= 0.2 ? fmtNum(d.pluie) + ' mm' + (d.prob != null ? ' (' + Math.round(d.prob) + ' %)' : '') : 'pas de pluie';
+    return (wmoTxt(d.code) ? wmoTxt(d.code) + ' · ' : '') + r0(d.tmin) + '° → ' + r0(d.tmax) + '° · vent ' + (d.dir != null ? card(d.dir + 0) + ' ' : '') + r0(d.vent) + ' km/h, rafales ' + r0(d.rafales) + ' · ' + pl_;
+  }
+  function fmtNum(x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); }
+  async function refreshMeteo(force) {
+    if (!S.meteoOn || !navigator.onLine) return;
+    var age = S.meteo && S.meteo.at ? Date.now() - Date.parse(S.meteo.at) : Infinity;
+    if (!force && age < 2 * 3600e3 && meteoDay(0)) return;
+    try {
+      var ctl = window.AbortController ? new AbortController() : null; if (ctl) setTimeout(function () { ctl.abort(); }, 12000);
+      var r = await fetch(METEO_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      var j = await r.json(); if (!j.daily || !j.daily.time) throw new Error('réponse inattendue');
+      S.meteo = { at: new Date().toISOString(), daily: j.daily }; await NavDB.setMeta('meteo', S.meteo);
+      if (S.tab === 'cartes') renderLib();
+    } catch (e) { console.warn('[météo]', e && e.message); }
+  }
+  function meteoHtml() {
+    if (!S.meteoOn) return '';
+    var d = meteoDay(0), t = meteoDay(1), h = new Date().getHours();
+    if (!d && !t) return navigator.onLine ? '' : '<div class="dash-meteo muted">Météo : pas encore reçue aujourd\'hui (il faut du réseau)</div>';
+    var at = S.meteo.at ? new Date(S.meteo.at) : null;
+    var age = at ? ' · ' + (localDay(0) === at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0') ? 'prise à ' + at.getHours() + ' h ' + String(at.getMinutes()).padStart(2, '0') : 'prise le ' + at.getDate() + '/' + (at.getMonth() + 1)) : '';
+    var gust = d && d.rafales != null && d.rafales >= 50;
+    return '<button class="dash-meteo' + (gust ? ' warn' : '') + '" data-act="meteoSheet">' +
+      (d ? '<span><b>Aujourd\'hui</b> ' + esc(meteoLine(d)) + '</span>' : '') +
+      (t && (!d || h >= 14) ? '<span><b>Demain</b> ' + esc(meteoLine(t)) + '</span>' : '') +
+      '<span class="src">Open-Meteo · GEM (ECCC)' + esc(age) + '</span></button>';
+  }
+  function meteoSheet() {
+    var rows = [[0, 'Aujourd\'hui'], [1, 'Demain']].map(function (x) {
+      var d = meteoDay(x[0]); if (!d) return '';
+      return '<div class="disp"><b>' + x[1] + '</b> · ' + esc(wmoTxt(d.code) || '') + '<div class="muted" style="font-size:15px;line-height:1.5;margin-top:4px">' +
+        'Température : ' + r0(d.tmin) + ' à ' + r0(d.tmax) + ' °C<br>Vent : ' + r0(d.vent) + ' km/h' + (d.dir != null ? ' de ' + card(d.dir) + ' (' + Math.round(d.dir) + '°)' : '') + ', rafales jusqu\'à ' + r0(d.rafales) + ' km/h<br>' +
+        'Précipitations : ' + (d.pluie != null ? fmtNum(d.pluie) + ' mm' : '–') + (d.prob != null ? ', probabilité max. ' + Math.round(d.prob) + ' %' : '') + '</div></div>';
+    }).join('');
+    openSheet('<h3>Météo à Duchénier</h3>' + (rows || '<p class="muted">Pas de prévision en mémoire.</p>') +
+      '<p class="muted" style="font-size:13px;line-height:1.45;margin:10px 2px">Prévision pour le centre de la réserve, prise quand le téléphone avait du réseau' + (S.meteo && S.meteo.at ? ' (' + new Date(S.meteo.at).toLocaleString('fr-CA', { dateStyle: 'short', timeStyle: 'short' }) + ')' : '') +
+      '. Ce n\'est pas un avertissement officiel : consultez Environnement Canada pour les alertes.<br>Données : Open-Meteo.com (CC BY 4.0), modèle GEM du Service météorologique du Canada.</p>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><button class="btn" data-act="closeSheet">Fermer</button><button class="btn primary" data-act="meteoRefresh"' + (navigator.onLine ? '' : ' disabled') + '>Actualiser</button></div>');
+  }
+
+  // Bandeau de la Bibliothèque : qui, quoi envoyer, quoi faire, reprendre
+  function dashHtml() {
+    var u = unsent(), nU = u.wps.length + u.trs.length;
+    var todo = S.wps.filter(function (w) { return w.statut === 'a_faire' && layerVisible(w.layerId); });
+    var lb = S.lastBackup, days = lb ? (Date.now() - Date.parse(lb)) / 864e5 : null, nb = notBackedUp(lb), backupLate = nb > 0 && (days === null || days > 7);
+    var last = S.lastCarteId && carteById(S.lastCarteId);
+    var who = S.employee ? '<b>' + esc(S.employee) + '</b>' : '<button class="dash-link warn" data-act="dashName">' + ic('edit', 'sm') + 'Entrez votre nom</button>';
+    var head = '<div class="dash-l1">' + who + '<span class="muted mono">' + APP_VERSION + '</span>';
+    var resume = last ? '<button class="btn dash-resume" data-act="openCarte" data-id="' + esc(last.id) + '" aria-label="Reprendre la carte ' + esc(last.name) + '">' + ic('map', 'sm') + '<span>Reprendre <b>' + esc(last.name) + '</b></span></button>' : '';
+    if (!nU && !todo.length && !backupLate) // tout va bien : une seule ligne
+      return '<div class="dash calm">' + head + '<span class="ok">Tout est envoyé ✓</span></div>' + meteoHtml() + resume + '</div>';
+    var h = '<div class="dash">' + head + '</div>';
+    h += nU ? '<div class="dash-r"><span>' + pl(nU, 'relevé à envoyer', 'relevés à envoyer') + ' au bureau</span><button class="btn primary" data-act="sendOffice">' + ic('share', 'sm') + 'Envoyer</button></div>'
+      : '<div class="dash-r"><span class="ok">Tout est envoyé ✓</span></div>';
+    if (backupLate) h += '<button class="dash-link warn" data-act="dashBackup">' + ic('download', 'sm') + (lb ? 'Sauvegarde complète : il y a ' + pl(Math.floor(days), 'jour') : 'Aucune sauvegarde complète encore') + '</button>';
+    if (todo.length) {
+      if (S.pos) {
+        var nw = todo.slice().sort(function (a, b) { return hav(S.pos, a) - hav(S.pos, b); })[0];
+        h += '<button class="dash-near" data-act="nearNav" data-id="' + nw.id + '">' + wpIcon(nw, 28) + '<span class="main"><span class="s">Le plus proche · ' + todo.length + ' à faire</span><span class="t">' + esc(nw.name) + '</span></span><span class="n mono">' + fmtDist(hav(S.pos, nw)) + ' ' + card(bearing(S.pos, nw)) + '</span>' + ic('nav', 'sm') + '</button>';
+      } else h += '<button class="dash-link" data-act="dashTodo">' + ic('pin', 'sm') + pl(todo.length, 'site à faire', 'sites à faire') + ' · voir la liste</button>';
+    }
+    return h + meteoHtml() + resume + '</div>';
+  }
   function renderLib() {
     var body = $('#lib-body'), q = S.libQuery.trim().toLowerCase(), html = '';
     var inFolder = !!S.libFolder;
@@ -184,7 +272,7 @@
     $('#lib-folder-more').style.display = inFolder && S.libFolder !== 'none' ? '' : 'none';
     $('#lib-title').textContent = !inFolder ? 'Bibliothèque' : (S.libFolder === 'none' ? 'Sans dossier' : ((folderById(S.libFolder) || {}).name || 'Dossier'));
     if (!S.cartes.length && !S.folders.length) {
-      body.innerHTML = '<div class="empty">Aucune carte pour l\'instant.<br>Touchez <b>Importer</b> pour ajouter un GeoPDF (exporté de QGIS) ou un GeoTIFF.</div>';
+      body.innerHTML = dashHtml() + '<div class="empty">Aucune carte pour l\'instant.<br>Touchez <b>Importer</b> pour ajouter un GeoPDF (exporté de QGIS) ou un GeoTIFF.</div>';
       return;
     }
     if (q) {
@@ -199,6 +287,7 @@
         '<div class="empty">Ce dossier est vide.<br>Touchez <b>Importer</b> pour y ajouter une carte, ou déplacez-y une carte avec son bouton <b>⋯</b>.</div>');
       return;
     }
+    html += dashHtml();
     if (S.pos) {
       var here = cartesAt(S.pos.lat, S.pos.lon).slice(0, 4);
       if (here.length) {
@@ -221,6 +310,17 @@
   }
 
   async function importFiles(files) {
+    var lay = [], cartes = [];
+    Array.prototype.forEach.call(files, function (f) { (/\.(geojson|json|kml|kmz|gpx)$/i.test(f.name) ? lay : cartes).push(f); });
+    if (lay.length) {
+      if (cartes.length) await importCartes(cartes);
+      if (lay.length > 1) toast('Calques : un à la fois, par l\'onglet Points. Import de « ' + lay[0].name + ' »', 5000);
+      else toast('« ' + lay[0].name + ' » est un calque : il passe par l\'onglet Points', 4000);
+      return importLayerFile(lay[0]);
+    }
+    return importCartes(cartes);
+  }
+  async function importCartes(files) {
     var folderId = S.tab === 'cartes' && S.libFolder && S.libFolder !== 'none' ? S.libFolder : null, done = [];
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
@@ -275,6 +375,15 @@
     S.map.on('dragstart', function () { if (S.follow) setFollow(false); });
     S.map.on('move', onMapMove);
   }
+  // ── Garde-fou : une carte qui fait planter l'application (mémoire) n'est pas rouverte au démarrage ──
+  // Le drapeau reste posé tant qu'une carte PDF/GeoTIFF est affichée ; il est retiré à toute sortie normale
+  // (autre onglet, autre carte, application mise en arrière-plan). S'il est encore là au démarrage, c'est un plantage.
+  var GARDE_CLE = 'nv_carte_ouverte';
+  function gardePose(c) { try { localStorage.setItem(GARDE_CLE, JSON.stringify({ id: c.id, name: c.name, t: Date.now() })); } catch (e) {} }
+  function gardeRetire() { try { localStorage.removeItem(GARDE_CLE); } catch (e) {} }
+  function gardeLue() { try { var v = JSON.parse(localStorage.getItem(GARDE_CLE) || 'null'); return v && v.id ? v : null; } catch (e) { return null; } }
+  function gardeActive() { return $('#view-map').classList.contains('active') && S.carte && !isFond(S.carte) && document.visibilityState === 'visible'; }
+
   function openMapDefault() {
     if (S.carte) { openMap(S.carte.id); return; }
     if (!S.cartes.length) { toast('Importez d\'abord une carte'); showTab('cartes'); return; }
@@ -303,19 +412,21 @@
       if (isFond(c)) {
         var info = await window.NVPmtiles.info(blob);
         if (S.carte !== c) return;
+        gardeRetire();
         S.carteLayer = new window.NVPmtiles.Layer(info.pm, info.header, { zIndex: 0 }); // reste sous les ombrages
         S.carteLayer.addTo(S.map);
-        c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c); NavDB.setMeta('lastCarteId', id);
+        c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c); NavDB.setMeta('lastCarteId', id); S.lastCarteId = id;
       } else {
       toast('Ouverture de « ' + c.name + ' »…', 8000);
+      gardePose(c);
       var ab = await blob.arrayBuffer();
       if (S.carte !== c) return; // une autre carte a été demandée entre-temps
       S.carteLayer = window.createTiffLayer(ab, { keepView: keep,
         onReady: function () { toast('« ' + c.name + ' » prête'); },
-        onError: function (m) { toast('Erreur de carte : ' + m, 6000); } });
+        onError: function (m) { gardeRetire(); toast('Erreur de carte : ' + m, 6000); } });
       S.carteLayer.addTo(S.map);
       c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c);
-      NavDB.setMeta('lastCarteId', id);
+      NavDB.setMeta('lastCarteId', id); S.lastCarteId = id;
       }
       applyFonds(); applyCarteStyle();
     } else if (opts.center) S.map.setView(opts.center, opts.zoom || Math.max(S.map.getZoom(), 15));
@@ -1445,7 +1556,7 @@
     var mine = S.wps.filter(function (w) { return !w.imported || w.modified; }), myT = S.traces.filter(function (t) { return !t.imported; });
     opts.push({ label: 'Tout renvoyer', sub: pl(mine.length, 'point') + ' · ' + pl(myT.length, 'tracé') + ' (les sites reçus non modifiés sont exclus)', icon: 'share', fn: function () { prepareSend(mine, myT, 'tout'); } });
     if (!S.employee) opts.push({ label: 'Indiquer mon nom', sub: 'Il apparaîtra dans l\'objet du courriel', icon: 'edit', fn: async function () { var n = await askText('Votre nom', '', 'ex. Julia'); if (n) { S.employee = n; await NavDB.setMeta('employee', n); } sendOffice(); } });
-    sheetOptions('Envoyer au bureau', 'Destinataire : ' + S.officeEmail + '. Les fichiers (KMZ avec photos + GeoJSON) s\'ouvrent dans Mail : choisissez l\'adresse, puis Envoyer. Faites-le de préférence sur Wi-Fi.', opts);
+    sheetOptions('Envoyer au bureau', 'Destinataire : ' + S.officeEmail + '. Les fichiers (KMZ avec photos + GeoJSON) partent dans l\'application de courriel choisie ; l\'adresse est copiée pour être collée dans « À ». Faites-le de préférence sur Wi-Fi.', opts);
   }
   async function prepareSend(wps, trs, what) {
     if (!wps.length && !trs.length) { toast('Rien à envoyer'); return; }
@@ -1465,7 +1576,10 @@
       };
       var canShare = navigator.share && navigator.canShare && navigator.canShare({ files: fl });
       var opts = [];
-      if (canShare) opts.push({ label: 'Ouvrir dans Mail', sub: 'À : ' + S.officeEmail + ' · ' + fmtSize(size), icon: 'share', cls: 'primary', fn: async function () {
+      if (canShare) opts.push({ label: 'Partager vers Outlook ou Mail', sub: 'L\'adresse ' + S.officeEmail + ' sera copiée : collez-la dans « À » · ' + fmtSize(size), icon: 'share', cls: 'primary', fn: async function () {
+        // iOS ne permet pas de remplir le destinataire d'un partage : on copie l'adresse (sans attendre, pour garder le geste de l'utilisateur)
+        var copied = false; try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(S.officeEmail).catch(function () {}); copied = true; } } catch (e) {}
+        if (copied) toast('Adresse copiée : appui long dans « À », puis Coller', 6000);
         try { await navigator.share({ files: fl, title: subject, text: subject + '\n\nÀ envoyer à : ' + S.officeEmail }); await markSent(); toast('Marqué comme envoyé'); }
         catch (e) { if (e.name !== 'AbortError') toast('Partage impossible : ' + e.message); }
       } });
@@ -1496,7 +1610,7 @@
       zip.file('LISEZMOI.txt', 'Sauvegarde NAVenza MAP ' + APP_VERSION + ' du ' + fmtDate(data.date) + '\n' + pl(S.wps.length, 'point') + ', ' + pl(nPh, 'photo') + ', ' + pl(S.traces.length, 'tracé') + ', ' + pl(S.layers.length, 'calque') + '.\nLes fichiers de cartes (PDF, GeoTIFF) ne sont pas inclus : réimportez-les au besoin.\nPour restaurer : Réglages > Restaurer une sauvegarde.\n');
       var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 4 }, mimeType: 'application/zip' });
       var name = 'navenza_sauvegarde_' + (S.employee ? NVImport.slugKey(S.employee) + '_' : '') + new Date().toISOString().slice(0, 10) + '.zip';
-      await NavDB.setMeta('lastBackup', data.date);
+      await NavDB.setMeta('lastBackup', data.date); S.lastBackup = data.date;
       deliver([{ blob: blob, name: name }]);
     } catch (e) { toast('Sauvegarde impossible : ' + e.message, 6000); }
   }
@@ -1560,7 +1674,8 @@
       '<p class="muted" style="font-size:14px;line-height:1.4;margin:4px 2px">Exemple : ' + esc(fmtLL(48.20714, -68.51233)) + '. Sur la carte, touchez la ligne des coordonnées pour changer de format.</p>';
     html += '<div class="section-h"><h2>Envoi au bureau</h2></div><div class="list">' +
       '<button class="row" data-act="setEmployee"><span class="main"><span class="t">' + esc(S.employee || 'Votre nom (non indiqué)') + '</span><span class="s">Apparaît dans l\'objet des envois</span></span>' + ic('edit', 'sm muted') + '</button>' +
-      '<button class="row" data-act="setOffice"><span class="main"><span class="t">' + esc(S.officeEmail) + '</span><span class="s">Destinataire des envois</span></span>' + ic('edit', 'sm muted') + '</button></div>';
+      '<button class="row" data-act="setOffice"><span class="main"><span class="t">' + esc(S.officeEmail) + '</span><span class="s">Destinataire des envois</span></span>' + ic('edit', 'sm muted') + '</button>' +
+      '<button class="row" data-act="meteoToggle" aria-pressed="' + !!S.meteoOn + '"><span class="main"><span class="t">Météo dans le bandeau : ' + (S.meteoOn ? 'oui' : 'non') + '</span><span class="s">Prévision pour le centre de la réserve · Open-Meteo, modèle GEM (CC BY 4.0)</span></span>' + ic(S.meteoOn ? 'eye' : 'eyeoff', 'sm muted') + '</button></div>';
     html += '<div class="section-h"><h2>Hors ligne et stockage</h2></div><div class="list">' +
       '<div class="row"><span class="main"><span class="t" style="color:' + (offlineState.ok ? 'var(--ok)' : 'var(--accent-text)') + '">' + esc(offlineState.msg) + '</span><span class="s">Application et bibliothèques en cache sur l\'appareil</span></span></div>' +
       '<div class="row"><span class="main"><span class="t">' + (est && est.usage != null ? fmtSize(est.usage) + ' utilisés' : 'Espace utilisé inconnu') + '</span><span class="s wrap-ok">' + (est && est.quota ? 'Espace disponible pour l\'app : environ ' + fmtSize(est.quota) : 'Quota non communiqué par le système') + (persisted === true ? ' · stockage protégé' : (persisted === false ? ' · stockage non garanti par le système' : '')) + '</span></span></div>' +
@@ -1659,6 +1774,11 @@
     serieStart: serieStart, serieSave: serieSave, serieUndo: serieUndo, serieEnd: function () { serieEnd(); },
     serieSrc: function (el) { serieSync(); S.serieCfg.src = el.dataset.id; renderSerieSheet(); },
     hideDone: function () { S.hideDone = !S.hideDone; NavDB.setMeta('hideDone', S.hideDone); renderOverlays(); displaySheet(); },
+    dashName: async function () { await ACT.setEmployee(); renderLib(); },
+    dashBackup: function () { showTab('reglages'); },
+    dashTodo: function () { S.ptsMode = 'points'; S.ptsStat = 'a_faire'; showTab('points'); },
+    meteoSheet: meteoSheet, meteoRefresh: async function () { await refreshMeteo(true); meteoSheet(); toast(meteoDay(0) ? 'Météo actualisée' : 'Météo indisponible pour l\'instant'); },
+    meteoToggle: async function () { S.meteoOn = !S.meteoOn; await NavDB.setMeta('meteoOn', S.meteoOn); if (S.meteoOn) refreshMeteo(true); renderSettings(); },
     nearNav: function (el) { S.wpOpen = +el.dataset.id; ACT.wpNav(); },
     accueilOk: accueilOk, accueilPlusTard: function () { NavDB.setMeta('accueilVu', true); $('#accueil').classList.add('hidden'); },
     cycleFmt: function () { var i = NVCoords.FORMATS.findIndex(function (x) { return x[0] === S.coordFmt; }), n = NVCoords.FORMATS[(i + 1) % NVCoords.FORMATS.length]; S.coordFmt = n[0]; NavDB.setMeta('coordFmt', n[0]); updateCoordsBar(); if (S.mire) updateMire(); toast('Coordonnées : ' + n[1]); },
@@ -1824,14 +1944,30 @@
     }
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     window.addEventListener('online', checkOffline); window.addEventListener('offline', checkOffline);
+    window.addEventListener('online', function () { refreshMeteo(); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { refreshMeteo(); if (S.tab === 'cartes') renderLib(); if (gardeActive()) gardePose(S.carte); } else gardeRetire(); });
+    window.addEventListener('pagehide', gardeRetire);
+    setTimeout(function () { refreshMeteo(); }, 1500);
     setTimeout(checkOffline, 800);
     S.hideDone = !!(await NavDB.getMeta('hideDone'));
+    S.lastCarteId = await NavDB.getMeta('lastCarteId'); S.lastBackup = await NavDB.getMeta('lastBackup');
+    var sheetShownGarde = false;
+    S.meteo = await NavDB.getMeta('meteo'); S.meteoOn = (await NavDB.getMeta('meteoOn')) !== false;
     $('#boot').classList.add('hidden');
     if (!S.employee && !(await NavDB.getMeta('accueilVu'))) showAccueil();
     var lastView = await NavDB.getMeta('lastView'), lastCarte = await NavDB.getMeta('lastCarteId');
-    if (lastView === 'map' && lastCarte && carteById(lastCarte)) openMap(lastCarte); else showTab(lastView === 'points' || lastView === 'apercu' ? lastView : 'cartes');
+    var plante = gardeLue(); gardeRetire();
+    if (plante) {
+      showTab('cartes');
+      var pc = carteById(plante.id);
+      sheetOptions('La carte « ' + (pc ? pc.name : plante.name) + ' » a fait fermer l\'application',
+        'Au dernier essai, l\'application s\'est fermée pendant que cette carte était affichée : elle est probablement trop lourde pour la mémoire du téléphone. Elle n\'a pas été rouverte. Vos autres cartes, l\'orthophoto, le relief et vos relevés sont intacts.',
+        (pc ? [{ label: 'Supprimer cette carte', icon: 'trash', cls: 'danger', fn: async function () { await NavDB.deleteCarte(pc.id); S.cartes = S.cartes.filter(function (x) { return x.id !== pc.id; }); if (S.lastCarteId === pc.id) { S.lastCarteId = null; NavDB.setMeta('lastCarteId', null); } renderLib(); toast('Carte supprimée'); } },
+          { label: 'Réessayer de l\'ouvrir', icon: 'map', fn: function () { openMap(pc.id); } }] : []).concat([{ label: 'Fermer', fn: function () {} }]));
+      sheetShownGarde = true;
+    } else if (lastView === 'map' && lastCarte && carteById(lastCarte)) openMap(lastCarte); else showTab(lastView === 'points' || lastView === 'apercu' ? lastView : 'cartes');
     if (summary) sheetOptions('Vos données sont à jour', pl(summary.dossiers, 'dossier') + ', ' + pl(summary.cartes, 'carte') + ', ' + pl(summary.calques, 'calque') + ', ' + pl(summary.points, 'point') + ' (' + pl(summary.photos, 'photo') + ') et ' + pl(summary.traces, 'tracé') + ' ont été convertis. Chaque ancien projet est devenu un dossier et un calque du même nom.', [{ label: 'Compris', cls: 'primary', icon: 'check', fn: function () {} }], true);
-    var pend = await NavDB.getMeta('traceEnCours'), sheetShown = !!summary;
+    var pend = await NavDB.getMeta('traceEnCours'), sheetShown = !!summary || sheetShownGarde;
     if (pend && pend.pts && pend.pts.length > 1 && !summary) {
       sheetShown = true;
       sheetOptions('Tracé non terminé', 'Un tracé de ' + pend.pts.length + ' points (' + fmtDist(traceDist(pend.pts)) + ') n\'a pas été enregistré.', [
