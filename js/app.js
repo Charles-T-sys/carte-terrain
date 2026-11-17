@@ -1,7 +1,7 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.7.3';
+  var APP_VERSION = '5.7.4';
   var NOUVEAUTES = ['Mettre à jour un calque : les corrections du bureau arrivent aussi sur les sites déjà visités ; seul ce que vous avez changé et pas encore envoyé est gardé', 'Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
 
   // ══════════════ Outils ══════════════
@@ -1542,6 +1542,7 @@
     var base = ex.base || L, ref = ex.sentSnap || base, prendre = [];
     SITE_CHAMPS.concat(propKeys(L, B, base, ref)).forEach(function (f) {
       if (sameVal(valOf(L, f), valOf(ref, f), f)) { if (!sameVal(valOf(L, f), valOf(B, f), f)) prendre.push(f); }
+      else if (sameVal(valOf(L, f), valOf(B, f), f)) { /* même valeur ici et au bureau : rien à garder */ }
       else if (sameVal(valOf(B, f), valOf(base, f), f)) res.garde.push(f);
       else res.conflit.push(f);
     });
