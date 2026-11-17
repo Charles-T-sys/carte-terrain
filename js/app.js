@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.7.1';
-  var NOUVEAUTES = ['Bibliothèque : un bandeau avec votre nom, les relevés à envoyer, le site à faire le plus proche et « Reprendre » la dernière carte']; 
+  var APP_VERSION = '5.7.0';
+  var NOUVEAUTES = ['Relevé en série : Point → « Relevé en série », numéro automatique et une valeur par point (bathymétrie, stations)', 'Points : le site à faire le plus proche, avec distance et direction ; Affichage : masquer les sites faits', 'Photos : date et position réécrites dans les fichiers exportés', 'Nouveau logo et écran d\'accueil']; 
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -65,7 +65,7 @@
     ov: null, ovFolder: 'all', ovLayers: null, ovPos: null,
     fonds: {}, fondLayers: {}, carteOpacity: 1, carteBlend: false,
     activeLayerId: null, theme: 'sombre', edgeDismissed: {}, edgeTarget: null, wakeLock: null,
-    serie: null, serieCfg: null, hideDone: false, lastCarteId: null, lastBackup: null
+    serie: null, serieCfg: null, hideDone: false
   };
   function newUid() {
     try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
@@ -177,30 +177,6 @@
       '<span class="main"><span class="t">' + esc(c.name) + '</span><span class="s">' + esc(sub) + '</span></span>' + (here ? '<span class="badge">ici</span>' : '') + '</button>' +
       '<button class="more" data-act="carteMenu" data-id="' + esc(c.id) + '" aria-label="Actions pour ' + esc(c.name) + '">' + ic('more') + '</button></div>';
   }
-
-  // Bandeau de la Bibliothèque : qui, quoi envoyer, quoi faire, reprendre
-  function dashHtml() {
-    var u = unsent(), nU = u.wps.length + u.trs.length;
-    var todo = S.wps.filter(function (w) { return w.statut === 'a_faire' && layerVisible(w.layerId); });
-    var lb = S.lastBackup, days = lb ? (Date.now() - Date.parse(lb)) / 864e5 : null, nb = notBackedUp(lb), backupLate = nb > 0 && (days === null || days > 7);
-    var last = S.lastCarteId && carteById(S.lastCarteId);
-    var who = S.employee ? '<b>' + esc(S.employee) + '</b>' : '<button class="dash-link warn" data-act="dashName">' + ic('edit', 'sm') + 'Entrez votre nom</button>';
-    var head = '<div class="dash-l1">' + who + '<span class="muted mono">' + APP_VERSION + '</span>';
-    var resume = last ? '<button class="btn dash-resume" data-act="openCarte" data-id="' + esc(last.id) + '" aria-label="Reprendre la carte ' + esc(last.name) + '">' + ic('map', 'sm') + '<span>Reprendre <b>' + esc(last.name) + '</b></span></button>' : '';
-    if (!nU && !todo.length && !backupLate) // tout va bien : une seule ligne
-      return '<div class="dash calm">' + head + '<span class="ok">Tout est envoyé ✓</span></div>' + resume + '</div>';
-    var h = '<div class="dash">' + head + '</div>';
-    h += nU ? '<div class="dash-r"><span>' + pl(nU, 'relevé à envoyer', 'relevés à envoyer') + ' au bureau</span><button class="btn primary" data-act="sendOffice">' + ic('share', 'sm') + 'Envoyer</button></div>'
-      : '<div class="dash-r"><span class="ok">Tout est envoyé ✓</span></div>';
-    if (backupLate) h += '<button class="dash-link warn" data-act="dashBackup">' + ic('download', 'sm') + (lb ? 'Sauvegarde complète : il y a ' + pl(Math.floor(days), 'jour') : 'Aucune sauvegarde complète encore') + '</button>';
-    if (todo.length) {
-      if (S.pos) {
-        var nw = todo.slice().sort(function (a, b) { return hav(S.pos, a) - hav(S.pos, b); })[0];
-        h += '<button class="dash-near" data-act="nearNav" data-id="' + nw.id + '">' + wpIcon(nw, 28) + '<span class="main"><span class="s">Le plus proche · ' + todo.length + ' à faire</span><span class="t">' + esc(nw.name) + '</span></span><span class="n mono">' + fmtDist(hav(S.pos, nw)) + ' ' + card(bearing(S.pos, nw)) + '</span>' + ic('nav', 'sm') + '</button>';
-      } else h += '<button class="dash-link" data-act="dashTodo">' + ic('pin', 'sm') + pl(todo.length, 'site à faire', 'sites à faire') + ' · voir la liste</button>';
-    }
-    return h + resume + '</div>';
-  }
   function renderLib() {
     var body = $('#lib-body'), q = S.libQuery.trim().toLowerCase(), html = '';
     var inFolder = !!S.libFolder;
@@ -208,7 +184,7 @@
     $('#lib-folder-more').style.display = inFolder && S.libFolder !== 'none' ? '' : 'none';
     $('#lib-title').textContent = !inFolder ? 'Bibliothèque' : (S.libFolder === 'none' ? 'Sans dossier' : ((folderById(S.libFolder) || {}).name || 'Dossier'));
     if (!S.cartes.length && !S.folders.length) {
-      body.innerHTML = dashHtml() + '<div class="empty">Aucune carte pour l\'instant.<br>Touchez <b>Importer</b> pour ajouter un GeoPDF (exporté de QGIS) ou un GeoTIFF.</div>';
+      body.innerHTML = '<div class="empty">Aucune carte pour l\'instant.<br>Touchez <b>Importer</b> pour ajouter un GeoPDF (exporté de QGIS) ou un GeoTIFF.</div>';
       return;
     }
     if (q) {
@@ -223,7 +199,6 @@
         '<div class="empty">Ce dossier est vide.<br>Touchez <b>Importer</b> pour y ajouter une carte, ou déplacez-y une carte avec son bouton <b>⋯</b>.</div>');
       return;
     }
-    html += dashHtml();
     if (S.pos) {
       var here = cartesAt(S.pos.lat, S.pos.lon).slice(0, 4);
       if (here.length) {
@@ -330,7 +305,7 @@
         if (S.carte !== c) return;
         S.carteLayer = new window.NVPmtiles.Layer(info.pm, info.header, { zIndex: 0 }); // reste sous les ombrages
         S.carteLayer.addTo(S.map);
-        c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c); NavDB.setMeta('lastCarteId', id); S.lastCarteId = id;
+        c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c); NavDB.setMeta('lastCarteId', id);
       } else {
       toast('Ouverture de « ' + c.name + ' »…', 8000);
       var ab = await blob.arrayBuffer();
@@ -340,7 +315,7 @@
         onError: function (m) { toast('Erreur de carte : ' + m, 6000); } });
       S.carteLayer.addTo(S.map);
       c.lastOpened = new Date().toISOString(); NavDB.saveCarte(c);
-      NavDB.setMeta('lastCarteId', id); S.lastCarteId = id;
+      NavDB.setMeta('lastCarteId', id);
       }
       applyFonds(); applyCarteStyle();
     } else if (opts.center) S.map.setView(opts.center, opts.zoom || Math.max(S.map.getZoom(), 15));
@@ -1521,7 +1496,7 @@
       zip.file('LISEZMOI.txt', 'Sauvegarde NAVenza MAP ' + APP_VERSION + ' du ' + fmtDate(data.date) + '\n' + pl(S.wps.length, 'point') + ', ' + pl(nPh, 'photo') + ', ' + pl(S.traces.length, 'tracé') + ', ' + pl(S.layers.length, 'calque') + '.\nLes fichiers de cartes (PDF, GeoTIFF) ne sont pas inclus : réimportez-les au besoin.\nPour restaurer : Réglages > Restaurer une sauvegarde.\n');
       var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 4 }, mimeType: 'application/zip' });
       var name = 'navenza_sauvegarde_' + (S.employee ? NVImport.slugKey(S.employee) + '_' : '') + new Date().toISOString().slice(0, 10) + '.zip';
-      await NavDB.setMeta('lastBackup', data.date); S.lastBackup = data.date;
+      await NavDB.setMeta('lastBackup', data.date);
       deliver([{ blob: blob, name: name }]);
     } catch (e) { toast('Sauvegarde impossible : ' + e.message, 6000); }
   }
@@ -1684,9 +1659,6 @@
     serieStart: serieStart, serieSave: serieSave, serieUndo: serieUndo, serieEnd: function () { serieEnd(); },
     serieSrc: function (el) { serieSync(); S.serieCfg.src = el.dataset.id; renderSerieSheet(); },
     hideDone: function () { S.hideDone = !S.hideDone; NavDB.setMeta('hideDone', S.hideDone); renderOverlays(); displaySheet(); },
-    dashName: async function () { await ACT.setEmployee(); renderLib(); },
-    dashBackup: function () { showTab('reglages'); },
-    dashTodo: function () { S.ptsMode = 'points'; S.ptsStat = 'a_faire'; showTab('points'); },
     nearNav: function (el) { S.wpOpen = +el.dataset.id; ACT.wpNav(); },
     accueilOk: accueilOk, accueilPlusTard: function () { NavDB.setMeta('accueilVu', true); $('#accueil').classList.add('hidden'); },
     cycleFmt: function () { var i = NVCoords.FORMATS.findIndex(function (x) { return x[0] === S.coordFmt; }), n = NVCoords.FORMATS[(i + 1) % NVCoords.FORMATS.length]; S.coordFmt = n[0]; NavDB.setMeta('coordFmt', n[0]); updateCoordsBar(); if (S.mire) updateMire(); toast('Coordonnées : ' + n[1]); },
@@ -1854,7 +1826,6 @@
     window.addEventListener('online', checkOffline); window.addEventListener('offline', checkOffline);
     setTimeout(checkOffline, 800);
     S.hideDone = !!(await NavDB.getMeta('hideDone'));
-    S.lastCarteId = await NavDB.getMeta('lastCarteId'); S.lastBackup = await NavDB.getMeta('lastBackup');
     $('#boot').classList.add('hidden');
     if (!S.employee && !(await NavDB.getMeta('accueilVu'))) showAccueil();
     var lastView = await NavDB.getMeta('lastView'), lastCarte = await NavDB.getMeta('lastCarteId');
