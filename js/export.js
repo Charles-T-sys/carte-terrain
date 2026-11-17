@@ -21,6 +21,8 @@
   function origine(t) { return t.origine === 'mesure' ? 'mesure' : (t.imported ? 'bureau' : 'trace GPS'); }
 
   // Source et qualité de la position (5.5)
+  // Site reçu du bureau dont la position a été changée sur le terrain (5.7.3) : « oui », lu par « Boucler la semaine »
+  function posTerrain(w) { var b = w.imported && w.base && w.base.pos; return b && (Math.abs(w.lat - b[0]) > 1e-7 || Math.abs(w.lon - b[1]) > 1e-7) ? 'oui' : null; }
   function gpsProps(w) {
     var g = w.gps || {}, r = function (v, d) { return v == null || !isFinite(v) ? null : +v.toFixed(d); };
     var o = { pos_source: g.src || (w.imported ? 'bureau' : null), acc_m: r(g.acc, 1), alt_m: r(g.alt, 1), alt_acc_m: r(g.altAcc, 1), avg_n: g.n || null, avg_s: g.dur || null, avg_spread_m: r(g.spread, 2) };
@@ -33,7 +35,7 @@
       return { type: 'Feature', geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
         properties: Object.assign({}, w.props || {}, { id: w.id, name: w.name, layer: layerName(byId, w.layerId), symbol: symId(w), symbol_label: symLabel(w), comment: w.comment || '',
           photo_count: (w.photoIds || []).length, photos: photoNames(w).join(';'), timestamp: w.timestamp, color: w.color || symColor(w), source: w.imported ? (w.modified ? 'bureau, modifié' : 'bureau') : 'terrain', ext_id: w.extId || null,
-          uid: w.uid || String(w.id), statut: w.statut || '', statut_date: w.statutAt || null, author: w.author || '', updated_at: w.updatedAt || w.timestamp, updated_by: w.updatedBy || '', device: w.device || '' }, gpsProps(w)) };
+          uid: w.uid || String(w.id), statut: w.statut || '', statut_date: w.statutAt || null, author: w.author || '', updated_at: w.updatedAt || w.timestamp, updated_by: w.updatedBy || '', device: w.device || '', position_terrain: posTerrain(w) }, gpsProps(w)) };
     }).concat(validTraces(trs).map(function (t) {
       return { type: 'Feature', geometry: isPoly(t) ? { type: 'Polygon', coordinates: [ring(t)] } : { type: 'LineString', coordinates: t.points.map(function (p) { return [p.lon, p.lat]; }) },
         properties: { id: t.id, uid: t.uid || String(t.id), author: t.author || '', updated_at: t.updatedAt || t.timestamp, device: t.device || '', source: t.imported ? 'bureau' : 'terrain', name: t.name || 'Tracé', layer: layerName(byId, t.layerId), timestamp: t.timestamp, points: t.points.length,

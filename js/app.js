@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.7.2';
-  var NOUVEAUTES = ['Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
+  var APP_VERSION = '5.7.3';
+  var NOUVEAUTES = ['Mettre à jour un calque : les corrections du bureau arrivent aussi sur les sites déjà visités ; seul ce que vous avez changé et pas encore envoyé est gardé', 'Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -1514,24 +1514,71 @@
     opts.push({ label: 'Choisir un autre calque', icon: 'layers', fn: function () { pickLayer(same ? same.id : null, function (lid) { mergeLayer(layerById(lid), data); }); } });
     sheetOptions('Importer un calque', summary, opts);
   }
+  // ── Fusion « Mettre à jour » champ par champ (5.7.3) ──
+  // Chaque site reçu garde w.base (dernière version du bureau) et, après un envoi, w.sentSnap (valeurs envoyées).
+  // Un champ changé ici depuis le dernier envoi est gardé ; sinon la valeur du bureau s'applique.
+  // Changé ici ET au bureau : conflit, la version du terrain l'emporte (site nommé dans le message).
+  var SITE_CHAMPS = ['name', 'comment', 'pos', 'sym', 'color', 'statut'];
+  function siteVals(o) { return { name: o.name || '', comment: o.comment || '', pos: [o.lat, o.lon], sym: o.sym || 'point', color: o.color || null, statut: o.statut || '', props: Object.assign({}, o.props || {}) }; }
+  function bureauVals(p, ex) { return { name: p.name || '', comment: p.comment || '', pos: [p.lat, p.lon], sym: p.sym || (ex && ex.base && ex.base.sym) || (ex && ex.sym) || 'point', color: p.color || null, statut: p.statut || 'a_faire', props: Object.assign({}, p.props || {}) }; }
+  function valOf(v, f) { return f.indexOf('props.') === 0 ? v.props[f.slice(6)] : v[f]; }
+  function sameVal(a, b, f) {
+    if (f === 'pos') return !!(a && b) && Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+    return String(a == null ? '' : a) === String(b == null ? '' : b);
+  }
+  function propKeys() { var s = {}; for (var i = 0; i < arguments.length; i++) if (arguments[i]) Object.keys(arguments[i].props || {}).forEach(function (x) { s['props.' + x] = 1; }); return Object.keys(s); }
+  function applyVals(w, V, champs) {
+    champs.forEach(function (f) {
+      if (f === 'pos') { w.lat = V.pos[0]; w.lon = V.pos[1]; }
+      else if (f.indexOf('props.') === 0) { var kk = f.slice(6); w.props = w.props || {}; if (V.props[kk] == null || V.props[kk] === '') delete w.props[kk]; else w.props[kk] = V.props[kk]; }
+      else w[f] = V[f];
+    });
+  }
+  function mergeSite(ex, B) {
+    var L = siteVals(ex), res = { garde: [], conflit: [], change: false };
+    if (!ex.base && ex.modified && !ex.sentAt) { // site d'avant la 5.7.3, modifié et pas encore envoyé : gardé en entier
+      ex.base = B; res.garde = ['tout']; return res;
+    }
+    var base = ex.base || L, ref = ex.sentSnap || base, prendre = [];
+    SITE_CHAMPS.concat(propKeys(L, B, base, ref)).forEach(function (f) {
+      if (sameVal(valOf(L, f), valOf(ref, f), f)) { if (!sameVal(valOf(L, f), valOf(B, f), f)) prendre.push(f); }
+      else if (sameVal(valOf(B, f), valOf(base, f), f)) res.garde.push(f);
+      else res.conflit.push(f);
+    });
+    if (prendre.length) { res.change = true; applyVals(ex, B, prendre); if (prendre.indexOf('pos') >= 0) ex.gps = null; }
+    ex.base = B; ex.sentSnap = null;
+    var reste = res.garde.length + res.conflit.length > 0;
+    ex.modified = (ex.modified && !ex.sentAt) || reste;
+    if (!ex.modified) { ex.author = ''; ex.device = ''; }
+    return res;
+  }
+
   async function mergeLayer(l, data) {
     var oldW = S.wps.filter(function (w) { return w.layerId === l.id && w.imported; });
     var oldT = S.traces.filter(function (t) { return t.layerId === l.id && t.imported; });
     var byExt = {}; oldW.forEach(function (w) { byExt[w.extId] = w; });
-    var seen = {}, added = 0, updated = 0, kept = 0, removed = 0, now = Date.now(), k = 0;
+    var seen = {}, added = 0, updated = 0, removed = 0, now = Date.now(), k = 0, gardes = [], conflits = [];
     for (var i = 0; i < data.points.length; i++) {
       var p = data.points[i], ex = byExt[p.extId]; seen[p.extId] = true;
-      if (ex && ex.modified) { kept++; continue; } // modifié sur le terrain : on ne l'écrase pas
-      var w = ex || { id: now + (k++), photoIds: [], timestamp: new Date().toISOString(), imported: true, layerId: l.id };
-      Object.assign(w, { extId: p.extId, uid: 'site:' + p.extId, name: p.name, comment: p.comment, lat: p.lat, lon: p.lon, sym: p.sym || (ex && ex.sym) || 'point', color: p.color || null, props: p.props, layerId: l.id, imported: true, modified: false,
-        statut: p.statut || (ex && ex.statut) || 'a_faire', author: '', device: '' });
-      await NavDB.saveWaypoint(w);
-      if (ex) updated++; else { S.wps.push(w); added++; }
+      var B = bureauVals(p, ex);
+      if (!ex) {
+        var w = { id: now + (k++), photoIds: [], timestamp: new Date().toISOString(), imported: true, layerId: l.id, extId: p.extId, uid: 'site:' + p.extId, modified: false, author: '', device: '' };
+        applyVals(w, B, SITE_CHAMPS.concat(propKeys(B, null)));
+        w.base = B; await NavDB.saveWaypoint(w); S.wps.push(w); added++; continue;
+      }
+      var r = mergeSite(ex, B);
+      ex.layerId = l.id; ex.imported = true;
+      await NavDB.saveWaypoint(ex);
+      if (r.conflit.length) conflits.push(ex.name); else if (r.garde.length) gardes.push(ex.name);
+      if (r.change) updated++;
     }
     for (var j = 0; j < oldW.length; j++) {
-      var o = oldW[j]; if (seen[o.extId]) continue; if (o.modified) { kept++; continue; }
+      var o = oldW[j]; if (seen[o.extId]) continue;
+      if (o.modified && !o.sentAt) { gardes.push(o.name + ' (retiré par le bureau)'); continue; } // changements pas encore envoyés : on garde
       await NavDB.deleteWaypoint(o); S.wps = S.wps.filter(function (x) { return x.id !== o.id; }); removed++;
     }
+    var noms = function (a) { return a.length > 8 ? a.slice(0, 8).join(', ') + ' et ' + (a.length - 8) + ' autre(s)' : a.join(', '); };
+    var kept = gardes.length + conflits.length;
     for (var a = 0; a < oldT.length; a++) { await NavDB.deleteTrace(oldT[a].id); }
     S.traces = S.traces.filter(function (t) { return !(t.layerId === l.id && t.imported); });
     for (var b = 0; b < data.lines.length; b++) {
@@ -1544,7 +1591,9 @@
     }
     l.source = data.fileName; l.importedAt = new Date().toISOString(); await NavDB.saveLayer(l);
     renderOverlays(); if ($('#view-points').classList.contains('active')) renderPoints();
-    var msg = [added ? pl(added, 'site ajouté', 'sites ajoutés') : '', updated ? pl(updated, 'mis à jour', 'mis à jour') : '', removed ? pl(removed, 'retiré', 'retirés') : '', kept ? pl(kept, 'modifié sur le terrain conservé', 'modifiés sur le terrain conservés') : '', data.lines.length ? pl(data.lines.length, 'ligne') : ''].filter(Boolean).join(', ');
+    var msg = [added ? pl(added, 'site ajouté', 'sites ajoutés') : '', updated ? pl(updated, 'mis à jour', 'mis à jour') : '', removed ? pl(removed, 'retiré', 'retirés') : '', data.lines.length ? pl(data.lines.length, 'ligne') : ''].filter(Boolean).join(', ');
+    if (conflits.length) msg += (msg ? '. ' : '') + 'Changé ici ET au bureau, votre version est gardée : ' + noms(conflits);
+    if (gardes.length) msg += (msg ? '. ' : '') + 'Vos changements pas encore envoyés sont gardés : ' + noms(gardes);
     sheetOptions('Calque « ' + l.name + ' » à jour', msg || 'Aucun changement.', [{ label: 'Voir sur la carte', icon: 'map', cls: 'primary', fn: function () { var p0 = data.points[0] || (data.lines[0] && data.lines[0].points[0]); if (p0) showOnMap(p0.lat, p0.lon); } }, { label: 'Fermer', fn: function () {} }], true);
   }
 
@@ -1570,7 +1619,7 @@
       var size = files.reduce(function (s, f) { return s + f.blob.size; }, 0);
       var markSent = async function () {
         var now = new Date().toISOString();
-        for (var i = 0; i < wps.length; i++) { wps[i].sentAt = now; await NavDB.saveWaypoint(wps[i]); }
+        for (var i = 0; i < wps.length; i++) { wps[i].sentAt = now; if (wps[i].imported) wps[i].sentSnap = siteVals(wps[i]); await NavDB.saveWaypoint(wps[i]); }
         for (var j = 0; j < trs.length; j++) { trs[j].sentAt = now; await NavDB.saveTrace(trs[j]); }
         await NavDB.setMeta('lastSent', now); if ($('#view-points').classList.contains('active')) renderPoints();
       };
