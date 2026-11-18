@@ -236,6 +236,32 @@
 
   // ── Chargement paresseux de pdf.js (auto-hébergé dans lib/, mis en cache par le SW) ──
   var _pdfjsPromise = null;
+  // 5.7.5 — Images trop lourdes pour un téléphone : au-delà de ce nombre de pixels, pdf.js ne les décode pas.
+  // (Une image pleine page à 300 ppp d'une carte QGIS fait ~68 millions de pixels, ~270 Mo une fois décodée.)
+  var PDF_MAX_IMG = 25e6;
+  // Mesure les images d'un PDF sans le rendre : leurs dictionnaires sont toujours en clair (un flux n'est jamais
+  // dans un flux d'objets). Retourne { n, lourdes, plusGrande, total } en pixels.
+  function pdfImageScan(ab) {
+    var u8 = new Uint8Array(ab), res = { n: 0, lourdes: 0, plusGrande: 0, total: 0 }, CH = 4 << 20, BORD = 2048;
+    for (var pos = 0; pos < u8.length; pos += CH) {
+      var s = '', fin = Math.min(u8.length, pos + CH + BORD), deb = pos === 0 ? 0 : pos - BORD;
+      for (var i = deb; i < fin; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, Math.min(fin, i + 8192)));
+      var re = /\/Subtype\s*\/Image\b/g, m;
+      while ((m = re.exec(s))) {
+        var abs = deb + m.index; if (abs < pos && pos !== 0) continue; // déjà vu dans le bloc précédent
+        var a = Math.max(s.lastIndexOf('obj', m.index), m.index - 1500), b = s.indexOf('stream', m.index); if (b < 0 || b - m.index > 1500) b = m.index + 1500;
+        var d = s.slice(Math.max(0, a), b), w = /\/Width\s+(\d+)(?!\s+\d+\s+R)/.exec(d), h = /\/Height\s+(\d+)(?!\s+\d+\s+R)/.exec(d);
+        if (!w || !h || /\/ImageMask\s+true/.test(d)) continue; // un masque accompagne son image : non compté
+        var px = (+w[1]) * (+h[1]); res.n++; res.total += px;
+        if (px > res.plusGrande) res.plusGrande = px;
+        if (px > PDF_MAX_IMG) res.lourdes++;
+      }
+    }
+    return res;
+  }
+  window.NV_PDF_MAX_IMG = PDF_MAX_IMG;
+  window.pdfImageScan = pdfImageScan;
+
   function loadPdfJs() {
     if (!_pdfjsPromise) {
       var base = document.baseURI;
@@ -541,7 +567,7 @@
         var pdfjs = await loadPdfJs();
         var data = new Uint8Array(self._ab.slice(0)); // pdf.js transfère le tampon au worker
         self._ab = null;
-        var doc = await pdfjs.getDocument({ data: data, isEvalSupported: false }).promise;
+        var doc = await pdfjs.getDocument({ data: data, isEvalSupported: false, maxImageSize: PDF_MAX_IMG }).promise;
         if (self._destroyed) { doc.destroy(); return; }
         var page = await doc.getPage(1);
         self._doc = doc; self._page = page;

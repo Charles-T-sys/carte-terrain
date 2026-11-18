@@ -1,8 +1,8 @@
 // app.js — NAVenza MAP v3 : interface (bibliothèque, carte, points, aperçu, réglages)
 (function () {
   'use strict';
-  var APP_VERSION = '5.7.4';
-  var NOUVEAUTES = ['Mettre à jour un calque : les corrections du bureau arrivent aussi sur les sites déjà visités ; seul ce que vous avez changé et pas encore envoyé est gardé', 'Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
+  var APP_VERSION = '5.7.5';
+  var NOUVEAUTES = ['Cartes PDF : une image trop lourde pour le téléphone est ignorée au lieu de faire fermer l\'application, et l\'import vous avertit', 'Mettre à jour un calque : les corrections du bureau arrivent aussi sur les sites déjà visités ; seul ce que vous avez changé et pas encore envoyé est gardé', 'Sécurité : si une carte fait fermer l\'application, elle n\'est plus rouverte automatiquement au démarrage', 'Météo du jour et du lendemain dans le bandeau (prise quand il y a du réseau, gardée pour la journée)', 'Envoyer au bureau : l\'adresse est copiée, il suffit de la coller dans « À »', 'Un calque (GeoJSON, KML, GPX) choisi par erreur dans la Bibliothèque est envoyé vers l\'import de calques']; 
 
   // ══════════════ Outils ══════════════
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -322,6 +322,7 @@
   }
   async function importCartes(files) {
     var folderId = S.tab === 'cartes' && S.libFolder && S.libFolder !== 'none' ? S.libFolder : null, done = [];
+    var lourdes = [];
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       toast('Import ' + (i + 1) + '/' + files.length + ' : ' + f.name, 20000);
@@ -333,6 +334,7 @@
         var blob = new Blob([ab], { type: kind === 'pdf' ? 'application/pdf' : 'image/tiff' });
         var fp = await window.carteFootprint(blob);
         var name = f.name.replace(/\.(pdf|tiff?)$/i, '').replace(/_/g, ' ').trim();
+        if (kind === 'pdf') { try { var sc = window.pdfImageScan(ab); if (sc.lourdes || sc.total > 2 * window.NV_PDF_MAX_IMG) lourdes.push({ name: name, sc: sc }); } catch (e) { console.warn('pdfImageScan', e); } }
         var c = await NavDB.addCarte({ name: name, kind: kind, fileName: f.name, folderId: folderId, footprint: fp.footprint, bbox: fp.bbox }, blob);
         S.cartes.push(c); done.push(c);
       } catch (err) {
@@ -342,6 +344,13 @@
     }
     toast(done.length ? done.length + ' carte' + (done.length > 1 ? 's importées' : ' importée') : 'Aucune carte importée');
     renderLib();
+    if (lourdes.length) { // 5.7.5 : PDF avec des images trop lourdes pour un téléphone
+      var mpx = function (v) { return Math.round(v / 1e6) + ' millions de pixels'; };
+      var txt = lourdes.map(function (x) {
+        return '« ' + x.name + ' » : ' + (x.sc.lourdes ? x.sc.lourdes + ' image' + (x.sc.lourdes > 1 ? 's' : '') + ' trop lourde' + (x.sc.lourdes > 1 ? 's' : '') + ' (la plus grande : ' + mpx(x.sc.plusGrande) + '), qui ne ser' + (x.sc.lourdes > 1 ? 'ont' : 'a') + ' pas affichée' + (x.sc.lourdes > 1 ? 's' : '') + '.' : 'images totalisant ' + mpx(x.sc.total) + ' : la carte pourrait être lente ou faire fermer l\'application.');
+      }).join(' ');
+      await new Promise(function (ok) { sheetOptions('Carte lourde pour un téléphone', txt + ' Si ces images portent de l\'information, réexportez la carte depuis QGIS avec « Toujours exporter en vecteurs » et sans raster dans la mise en page.', [{ label: 'Compris', cls: 'primary', fn: ok }], true); });
+    }
     if (done.length === 1 && isFond(done[0])) sheetOptions('Mosaïque importée', '« ' + done[0].name + ' » est affichée en fond, sous vos cartes PDF et GeoTIFF. Réglez la transparence avec le bouton Calques sur la carte.', [{ label: 'Ouvrir maintenant', icon: 'map', cls: 'primary', fn: function () { openMap(done[0].id); } }, { label: 'Rester dans la bibliothèque', fn: function () {} }], true);
     else if (done.length === 1) sheetOptions('Carte importée', done[0].name, [{ label: 'Ouvrir maintenant', icon: 'map', cls: 'primary', fn: function () { openMap(done[0].id); } }, { label: 'Rester dans la bibliothèque', fn: function () {} }], true);
   }
